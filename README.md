@@ -1,13 +1,57 @@
 # Plugin Backup
 
-这是一个用于备份和同步 Obsidian 配置文件的轻量级插件。支持通过 NAS 在多设备之间快速、安全地同步配置，避免同步冲突。
-
-> [!CAUTION]
-> **免责声明与警告**：本插件代码主要由 **vibe coding** 制作。在使用本插件前，**请务必自行对您的 Obsidian 仓库（.obsidian 文件夹）进行手动备份**，以免发生意外情况导致配置丢失。
+[English](#english) | [中文说明](#中文说明)
 
 ---
 
-## 核心功能
+## English
+
+A lightweight plugin for backing up and syncing Obsidian configurations, plugins, hotkeys, and themes across devices via NAS without synchronization conflicts.
+
+> [!CAUTION]
+> **Disclaimer & Warning**: This plugin code was primarily created with **vibe coding**. Before using this plugin, **please make sure to back up your Obsidian vault configuration manually (the `.obsidian` folder)** to prevent accidental configuration loss.
+
+### Features
+
+*   **Dual-Directory System**:
+    *   `ob-plugin-backup/`: Sync directory (visible to NAS for multi-device syncing).
+    *   `.ob-plugin-backup-local/`: Dot-prefixed local backup directory (ignored by NAS, used for local emergency recovery).
+*   **Version History**: Customize retention counts for versioned snapshots.
+*   **Safe Incremental Restore**: Restoring will only overwrite configuration files included in the backup. It will **not** delete any new plugins you installed locally.
+*   **Automation**: Supports auto-backup on startup and scheduled interval backups.
+*   **Diff Checker**: Compare current local configurations with the latest backup in one click.
+
+### Installation
+
+1.  Copy the compiled files (`main.js` and `manifest.json` from the `release/` folder) into your Obsidian vault's plugin directory:
+    `.obsidian/plugins/ob-plugin-backup/`
+2.  Open Obsidian Settings → Community Plugins, and enable **Plugin Backup**.
+
+### Usage Instructions
+
+1.  **Initial Setup**:
+    *   Go to `Plugin Backup Settings`.
+    *   Configure **Sync backup path** (relative to vault root, defaults to `meta` which is synced via NAS).
+    *   Configure **Local safety snapshot path** (defaults to `.ob-plugin-backup-local`, which should be ignored by NAS).
+    *   Select categories you want to backup (Appearance, Hotkeys, Core Plugins, Community Plugins, etc.).
+2.  **Manual Backup**:
+    *   Run command `Plugin Backup: Create Backup` or click **Backup** in the settings panel.
+3.  **Check for Changes**:
+    *   Click the status bar item or run `Plugin Backup: Check for Changes` to check configuration differences.
+4.  **Restore**:
+    *   Run `Plugin Backup: Restore Latest Backup` to restore the latest backup.
+    *   Run `Plugin Backup: Restore from History` to choose a historical snapshot to restore. **Please reload Obsidian after restoring.**
+
+---
+
+## 中文说明
+
+用于通过 NAS 备份和同步 Obsidian 配置、插件、快捷键和主题的轻量级插件，避免同步冲突。
+
+> [!CAUTION]
+> **免责声明与警告**：本插件主要由 **vibe coding** 制作。在使用本插件前，**请务必自行对您的 Obsidian 仓库（.obsidian 文件夹）进行手动备份**，以免发生意外情况导致配置丢失。
+
+### 核心功能
 
 *   **双目录安全备份**：
     *   `ob-plugin-backup/`：同步目录（NAS可见并进行多端同步）。
@@ -17,17 +61,13 @@
 *   **自动与定时任务**：支持启动时自动备份、定时自动备份。
 *   **配置变更检测**：支持一键检查当前本地配置与备份配置的差异并输出差异日志。
 
----
-
-## 安装方法
+### 安装方法
 
 1.  将本项目编译生成的 `release/` 文件夹中的所有文件（`main.js`、`manifest.json`）复制到您 Obsidian 库的插件目录下：
     `.obsidian/plugins/ob-plugin-backup/`
 2.  打开 Obsidian 设置 → 社区插件，启用 **Plugin Backup** 插件。
 
----
-
-## 使用方法说明
+### 使用方法说明
 
 1.  **初次配置**：
     *   进入插件设置面板（`Plugin Backup Settings`）。
