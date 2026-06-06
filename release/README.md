@@ -1,4 +1,4 @@
-# obsidian-addon-sync v1.0.0
+# obsidian-addon-sync v1.1.0
 
 ## Installation
 Copy ALL files from this folder to your vault's:
@@ -6,7 +6,7 @@ Copy ALL files from this folder to your vault's:
 
 ## Files
 - `main.js` - Plugin code
-- `manifest.json` - Plugin metadata (version: 1.0.0)
+- `manifest.json` - Plugin metadata (version: 1.1.0)
 
 ## Usage
 1. Open Obsidian Settings → Community Plugins
