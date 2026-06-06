@@ -33,3 +33,8 @@ meta/
 # 5. 允许跟踪 src 源码目录下的所有内容
 !src/
 !src/**
+
+# 6. 允许跟踪 GitHub Workflows
+!.github/
+!.github/workflows/
+!.github/workflows/**

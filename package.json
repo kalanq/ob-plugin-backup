@@ -8,7 +8,7 @@
     "build": "node esbuild.config.mjs production"
   },
   "keywords": ["obsidian", "backup", "sync", "settings", "plugins"],
-  "author": "",
+  "author": "kalanq",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^16.11.6",
