@@ -1,15 +1,15 @@
 import { Plugin, Notice } from "obsidian";
-import type { AddonSyncSettings, SyncStatus } from "./types";
+import type { AddonBackupSettings, SyncStatus } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { COMMANDS } from "./constants";
 import { BackupManager } from "./backup";
 import { RestoreManager } from "./restore";
 import { DiffChecker } from "./diff";
 import { BackupScheduler } from "./scheduler";
-import { AddonSyncSettingTab } from "./settings";
+import { AddonBackupSettingTab } from "./settings";
 
-export default class AddonSyncPlugin extends Plugin {
-	settings!: AddonSyncSettings;
+export default class AddonBackupPlugin extends Plugin {
+	settings!: AddonBackupSettings;
 	backupManager!: BackupManager;
 	restoreManager!: RestoreManager;
 	diffChecker!: DiffChecker;
@@ -27,7 +27,7 @@ export default class AddonSyncPlugin extends Plugin {
 
 		this.registerCommands();
 		this.registerStatusBar();
-		this.addSettingTab(new AddonSyncSettingTab(this.app, this));
+		this.addSettingTab(new AddonBackupSettingTab(this.app, this));
 
 		this.runStartupTasks();
 	}
@@ -60,10 +60,10 @@ export default class AddonSyncPlugin extends Plugin {
 					this.updateStatus("syncing");
 					await this.backupManager.createBackup();
 					this.updateStatus("synced");
-					new Notice("Addon Sync: Backup created successfully.");
+					new Notice("Plugin Backup: Backup created successfully.");
 				} catch (err: any) {
 					this.updateStatus("error");
-					new Notice(`Addon Sync: Backup failed - ${err.message}`, 5000);
+					new Notice(`Plugin Backup: Backup failed - ${err.message}`, 5000);
 				}
 			},
 		});
@@ -76,7 +76,7 @@ export default class AddonSyncPlugin extends Plugin {
 					await this.restoreManager.restoreLatest();
 					await this.refreshStatus();
 				} catch (err: any) {
-					new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
+					new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
 				}
 			},
 		});
@@ -89,7 +89,7 @@ export default class AddonSyncPlugin extends Plugin {
 					await this.restoreManager.restoreFromHistory();
 					await this.refreshStatus();
 				} catch (err: any) {
-					new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
+					new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
 				}
 			},
 		});
@@ -102,9 +102,9 @@ export default class AddonSyncPlugin extends Plugin {
 					const summary = await this.diffChecker.getChangeSummary();
 					const hasChanges = await this.diffChecker.hasChanges();
 					this.updateStatus(hasChanges ? "changed" : "synced");
-					new Notice(`Addon Sync:\n${summary}`, 8000);
+					new Notice(`Plugin Backup:\n${summary}`, 8000);
 				} catch (err: any) {
-					new Notice(`Addon Sync: Check failed - ${err.message}`, 5000);
+					new Notice(`Plugin Backup: Check failed - ${err.message}`, 5000);
 				}
 			},
 		});
@@ -113,9 +113,9 @@ export default class AddonSyncPlugin extends Plugin {
 	private registerStatusBar() {
 		this.statusBarItem = this.addStatusBarItem();
 		this.statusBarItem.addClass("mod-clickable");
-		this.statusBarItem.setAttribute("aria-label", "Addon Sync: Click to check changes");
+		this.statusBarItem.setAttribute("aria-label", "Plugin Backup: Click to check changes");
 		this.statusBarItem.onClickEvent(() => {
-			(this.app as any).commands.executeCommandById(`obsidian-addon-sync:${COMMANDS.CHECK_CHANGES}`);
+			(this.app as any).commands.executeCommandById(`ob-plugin-backup:${COMMANDS.CHECK_CHANGES}`);
 		});
 		this.updateStatus("no-backup");
 	}
@@ -129,7 +129,7 @@ export default class AddonSyncPlugin extends Plugin {
 			error: "❌ Error",
 			"no-backup": "📦 No Backup",
 		};
-		this.statusBarItem.setText(`Addon Sync: ${labels[status]}`);
+		this.statusBarItem.setText(`Plugin Backup: ${labels[status]}`);
 	}
 
 	private async refreshStatus() {

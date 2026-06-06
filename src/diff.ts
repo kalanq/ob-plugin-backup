@@ -1,5 +1,5 @@
 import { App } from "obsidian";
-import type { AddonSyncSettings, FileChange, BackupMeta } from "./types";
+import type { AddonBackupSettings, FileChange, BackupMeta } from "./types";
 import { BackupManager } from "./backup";
 import { CONFIG_FILES } from "./constants";
 
@@ -8,16 +8,16 @@ const path = require("path");
 
 export class DiffChecker {
 	private app: App;
-	private settings: AddonSyncSettings;
+	private settings: AddonBackupSettings;
 	private backupManager: BackupManager;
 
-	constructor(app: App, settings: AddonSyncSettings, backupManager: BackupManager) {
+	constructor(app: App, settings: AddonBackupSettings, backupManager: BackupManager) {
 		this.app = app;
 		this.settings = settings;
 		this.backupManager = backupManager;
 	}
 
-	updateSettings(settings: AddonSyncSettings): void {
+	updateSettings(settings: AddonBackupSettings): void {
 		this.settings = settings;
 	}
 

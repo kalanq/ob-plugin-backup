@@ -1,7 +1,35 @@
+# 1. 默认忽略所有文件和文件夹
+*
+
+# 2. 允许 Git 遍历子文件夹（否则无法白名单子文件夹中的文件）
+!*/
+
+# 3. 明确忽略不需要遍历的大型或敏感文件夹（提升 git 效率并保护隐私）
 node_modules/
-/main.js
 dist/
+release/
 test-vault-a/
 test-vault-b/
 meta/
+.addon-backup-local/
 .addon-sync-local/
+.claude/
+.trae/
+.vscode/
+.idea/
+
+# 4. 允许跟踪特定的根目录配置文件和源码目录
+!manifest.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!esbuild.config.mjs
+!release.mjs
+!README.md
+!LICENSE
+!.gitignore
+!versions.json
+
+# 5. 允许跟踪 src 源码目录下的所有内容
+!src/
+!src/**

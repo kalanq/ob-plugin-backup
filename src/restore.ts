@@ -1,5 +1,5 @@
 import { App, Notice, FuzzySuggestModal } from "obsidian";
-import type { AddonSyncSettings } from "./types";
+import type { AddonBackupSettings } from "./types";
 import { BackupManager } from "./backup";
 
 const fs = require("fs");
@@ -7,17 +7,17 @@ const path = require("path");
 
 export class RestoreManager {
 	private app: App;
-	private settings: AddonSyncSettings;
+	private settings: AddonBackupSettings;
 	private backupManager: BackupManager;
 	isRestoring = false;
 
-	constructor(app: App, settings: AddonSyncSettings, backupManager: BackupManager) {
+	constructor(app: App, settings: AddonBackupSettings, backupManager: BackupManager) {
 		this.app = app;
 		this.settings = settings;
 		this.backupManager = backupManager;
 	}
 
-	updateSettings(settings: AddonSyncSettings): void {
+	updateSettings(settings: AddonBackupSettings): void {
 		this.settings = settings;
 	}
 
@@ -32,7 +32,7 @@ export class RestoreManager {
 	async restoreLatest(): Promise<void> {
 		const latestDir = this.backupManager.getSyncLatestDir();
 		if (!fs.existsSync(latestDir)) {
-			new Notice("Addon Sync: No backup found.");
+			new Notice("Plugin Backup: No backup found.");
 			return;
 		}
 		await this.restoreFromPath(latestDir);
@@ -43,7 +43,7 @@ export class RestoreManager {
 		const localSnapshots = this.backupManager.getLocalSnapshotList();
 
 		if (syncHistory.length === 0 && localSnapshots.length === 0) {
-			new Notice("Addon Sync: No history snapshots found.");
+			new Notice("Plugin Backup: No history snapshots found.");
 			return;
 		}
 
@@ -79,7 +79,7 @@ export class RestoreManager {
 
 	async restoreFromPath(backupPath: string): Promise<void> {
 		if (!fs.existsSync(backupPath)) {
-			new Notice("Addon Sync: Backup path not found.");
+			new Notice("Plugin Backup: Backup path not found.");
 			return;
 		}
 
@@ -93,9 +93,9 @@ export class RestoreManager {
 
 			this.restoreDirRecursive(backupPath, configPath);
 
-			new Notice("Addon Sync: Restore completed. Please reload Obsidian.", 8000);
+			new Notice("Plugin Backup: Restore completed. Please reload Obsidian.", 8000);
 		} catch (err: any) {
-			new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
+			new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
 			throw err;
 		} finally {
 			this.isRestoring = false;
@@ -181,7 +181,7 @@ class HistorySelectModal extends FuzzySuggestModal<string> {
 			const changelogStr = entry.changelog.length > 0
 				? "\n\nChanges:\n" + entry.changelog.join("\n")
 				: "";
-			new Notice(`Addon Sync: Restoring ${item}${changelogStr}`, 8000);
+			new Notice(`Plugin Backup: Restoring ${item}${changelogStr}`, 8000);
 			this.onSelect(entry);
 		}
 	}

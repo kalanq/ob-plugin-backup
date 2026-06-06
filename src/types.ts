@@ -1,4 +1,4 @@
-export interface AddonSyncSettings {
+export interface AddonBackupSettings {
 	backupPath: string;
 	localSnapshotPath: string;
 	backupAppearance: boolean;
@@ -16,9 +16,9 @@ export interface AddonSyncSettings {
 	localSnapshotRetentionCount: number;
 }
 
-export const DEFAULT_SETTINGS: AddonSyncSettings = {
+export const DEFAULT_SETTINGS: AddonBackupSettings = {
 	backupPath: "meta",
-	localSnapshotPath: ".addon-sync-local",
+	localSnapshotPath: ".ob-plugin-backup-local",
 	backupAppearance: true,
 	backupHotkeys: true,
 	backupCorePlugins: true,
@@ -54,7 +54,7 @@ export interface FileChange {
 export type SyncStatus = "synced" | "changed" | "syncing" | "error" | "no-backup";
 
 export interface BackupCategory {
-	key: keyof AddonSyncSettings;
+	key: keyof AddonBackupSettings;
 	label: string;
 	description: string;
 }

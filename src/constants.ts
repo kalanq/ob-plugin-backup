@@ -1,10 +1,10 @@
 import type { BackupCategory } from "./types";
 
-export const BACKUP_DIR_NAME = "addon-sync-backup";
+export const BACKUP_DIR_NAME = "ob-plugin-backup";
 export const LATEST_DIR_NAME = "latest";
 export const HISTORY_DIR_NAME = "history";
 export const META_FILE_NAME = "meta.json";
-export const LOCAL_SNAPSHOT_DIR_NAME = "addon-sync-local";
+export const LOCAL_SNAPSHOT_DIR_NAME = "ob-plugin-backup-local";
 
 export const CONFIG_FILES: Record<string, string[]> = {
 	appearance: ["appearance.json"],
@@ -27,10 +27,10 @@ export const BACKUP_CATEGORIES: BackupCategory[] = [
 ];
 
 export const COMMANDS = {
-	CREATE_BACKUP: "addon-sync-create-backup",
-	RESTORE_LATEST: "addon-sync-restore-latest",
-	RESTORE_FROM_HISTORY: "addon-sync-restore-from-history",
-	CHECK_CHANGES: "addon-sync-check-changes",
+	CREATE_BACKUP: "ob-plugin-backup-create-backup",
+	RESTORE_LATEST: "ob-plugin-backup-restore-latest",
+	RESTORE_FROM_HISTORY: "ob-plugin-backup-restore-from-history",
+	CHECK_CHANGES: "ob-plugin-backup-check-changes",
 };
 
 export const INTERVAL_OPTIONS = [

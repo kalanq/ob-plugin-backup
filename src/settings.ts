@@ -1,5 +1,5 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
-import type { AddonSyncSettings } from "./types";
+import type { AddonBackupSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { BACKUP_CATEGORIES, INTERVAL_OPTIONS, RETENTION_OPTIONS } from "./constants";
 import { BackupManager } from "./backup";
@@ -7,16 +7,16 @@ import { RestoreManager } from "./restore";
 import { DiffChecker } from "./diff";
 import { BackupScheduler } from "./scheduler";
 
-export class AddonSyncSettingTab extends PluginSettingTab {
+export class AddonBackupSettingTab extends PluginSettingTab {
 	private plugin: App & {
-		settings: AddonSyncSettings;
+		settings: AddonBackupSettings;
 		backupManager: BackupManager;
 		restoreManager: RestoreManager;
 		diffChecker: DiffChecker;
 		scheduler: BackupScheduler;
 		saveSettings: () => Promise<void>;
 	};
-	private settings: AddonSyncSettings;
+	private settings: AddonBackupSettings;
 
 	constructor(app: App, plugin: any) {
 		super(app, plugin);
@@ -28,7 +28,7 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Addon Sync Settings" });
+		containerEl.createEl("h2", { text: "Plugin Backup Settings" });
 
 		containerEl.createEl("h3", { text: "Backup Paths" });
 
@@ -50,7 +50,7 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 			.setDesc("Starts with '.' so NAS skips it. For emergency local recovery only.")
 			.addText((text) =>
 				text
-					.setPlaceholder(".addon-sync-local")
+					.setPlaceholder(".addon-backup-local")
 					.setValue(this.settings.localSnapshotPath)
 					.onChange(async (value) => {
 						this.settings.localSnapshotPath = value;
@@ -175,9 +175,9 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						try {
 							await this.plugin.backupManager.createBackup();
-							new Notice("Addon Sync: Backup created successfully.");
+							new Notice("Plugin Backup: Backup created successfully.");
 						} catch (err: any) {
-							new Notice(`Addon Sync: Backup failed - ${err.message}`, 5000);
+							new Notice(`Plugin Backup: Backup failed - ${err.message}`, 5000);
 						}
 					})
 			);
@@ -193,7 +193,7 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 						try {
 							await this.plugin.restoreManager.restoreFromHistory();
 						} catch (err: any) {
-							new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
+							new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
 						}
 					})
 			);
@@ -209,7 +209,7 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 						try {
 							await this.plugin.restoreManager.restoreLatest();
 						} catch (err: any) {
-							new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
+							new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
 						}
 					})
 			);
@@ -223,9 +223,9 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						try {
 							const summary = await this.plugin.diffChecker.getChangeSummary();
-							new Notice(`Addon Sync:\n${summary}`, 8000);
+							new Notice(`Plugin Backup:\n${summary}`, 8000);
 						} catch (err: any) {
-							new Notice(`Addon Sync: Check failed - ${err.message}`, 5000);
+							new Notice(`Plugin Backup: Check failed - ${err.message}`, 5000);
 						}
 					})
 			);

@@ -1,5 +1,5 @@
 import { App, Notice } from "obsidian";
-import type { AddonSyncSettings, BackupMeta, FileChange } from "./types";
+import type { AddonBackupSettings, BackupMeta, FileChange } from "./types";
 import {
 	BACKUP_DIR_NAME,
 	LATEST_DIR_NAME,
@@ -14,14 +14,14 @@ const path = require("path");
 
 export class BackupManager {
 	private app: App;
-	private settings: AddonSyncSettings;
+	private settings: AddonBackupSettings;
 
-	constructor(app: App, settings: AddonSyncSettings) {
+	constructor(app: App, settings: AddonBackupSettings) {
 		this.app = app;
 		this.settings = settings;
 	}
 
-	updateSettings(settings: AddonSyncSettings): void {
+	updateSettings(settings: AddonBackupSettings): void {
 		this.settings = settings;
 	}
 

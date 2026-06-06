@@ -1,5 +1,5 @@
 import { Notice, Plugin } from "obsidian";
-import type { AddonSyncSettings } from "./types";
+import type { AddonBackupSettings } from "./types";
 import { BackupManager } from "./backup";
 import { DiffChecker } from "./diff";
 import { RestoreManager } from "./restore";
@@ -33,7 +33,7 @@ export class BackupScheduler {
 			try {
 				await this.backupManager.createBackup();
 			} catch (err: any) {
-				console.error("Addon Sync: Auto backup failed", err);
+				console.error("Plugin Backup: Auto backup failed", err);
 			}
 		}, intervalMs) as unknown as number;
 
@@ -47,7 +47,7 @@ export class BackupScheduler {
 		}
 	}
 
-	configure(settings: AddonSyncSettings): void {
+	configure(settings: AddonBackupSettings): void {
 		this.stopAutoBackup();
 		if (settings.autoBackupEnabled && settings.autoBackupIntervalMinutes > 0) {
 			this.startAutoBackup(settings.autoBackupIntervalMinutes);
@@ -57,9 +57,9 @@ export class BackupScheduler {
 	async runStartupBackup(): Promise<void> {
 		try {
 			await this.backupManager.createBackup();
-			new Notice("Addon Sync: Startup backup completed.");
+			new Notice("Plugin Backup: Startup backup completed.");
 		} catch (err: any) {
-			console.error("Addon Sync: Startup backup failed", err);
+			console.error("Plugin Backup: Startup backup failed", err);
 		}
 	}
 
@@ -71,10 +71,10 @@ export class BackupScheduler {
 			const hasChanges = await this.diffChecker.hasChanges();
 			if (hasChanges) {
 				const summary = await this.diffChecker.getChangeSummary();
-				new Notice(`Addon Sync: Config changes detected.\n${summary}`, 8000);
+				new Notice(`Plugin Backup: Config changes detected.\n${summary}`, 8000);
 			}
 		} catch (err: any) {
-			console.error("Addon Sync: Startup change check failed", err);
+			console.error("Plugin Backup: Startup change check failed", err);
 		}
 	}
 }

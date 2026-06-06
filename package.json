@@ -1,5 +1,5 @@
 {
-  "name": "obsidian-addon-sync",
+  "name": "ob-plugin-backup",
   "version": "0.1.0",
   "description": "Backup and sync Obsidian settings, plugins, themes and hotkeys across devices",
   "main": "main.js",
