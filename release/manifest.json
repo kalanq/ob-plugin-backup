@@ -1,7 +1,7 @@
 {
   "id": "obsidian-addon-sync",
   "name": "Addon Sync",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "minAppVersion": "0.15.0",
   "description": "Backup and sync Obsidian settings, plugins, themes and hotkeys to a specified folder for NAS sync",
   "author": "",

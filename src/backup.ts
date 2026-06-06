@@ -319,11 +319,8 @@ export class BackupManager {
 	}
 
 	getSyncBackupDir(): string {
-		return this.getSyncBackupDirInternal();
-	}
-
-	private getSyncBackupDirInternal(): string {
-		return this.getSyncBackupDir();
+		const root = this.getSyncBackupRoot();
+		return root ? path.join(root, BACKUP_DIR_NAME) : "";
 	}
 
 	getSyncHistoryDir(): string {

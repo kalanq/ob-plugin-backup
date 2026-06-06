@@ -358,10 +358,8 @@ var BackupManager = class {
     }
   }
   getSyncBackupDir() {
-    return this.getSyncBackupDirInternal();
-  }
-  getSyncBackupDirInternal() {
-    return this.getSyncBackupDir();
+    const root = this.getSyncBackupRoot();
+    return root ? path.join(root, BACKUP_DIR_NAME) : "";
   }
   getSyncHistoryDir() {
     return path.join(this.getSyncBackupDir(), HISTORY_DIR_NAME);
