@@ -1,7 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { AddonSyncSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
-import { BACKUP_CATEGORIES } from "./constants";
+import { BACKUP_CATEGORIES, INTERVAL_OPTIONS, RETENTION_OPTIONS } from "./constants";
 import { BackupManager } from "./backup";
 import { RestoreManager } from "./restore";
 import { DiffChecker } from "./diff";
@@ -18,10 +18,7 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 	};
 	private settings: AddonSyncSettings;
 
-	constructor(
-		app: App,
-		plugin: any,
-	) {
+	constructor(app: App, plugin: any) {
 		super(app, plugin);
 		this.plugin = plugin as any;
 		this.settings = this.plugin.settings;
@@ -33,15 +30,30 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h2", { text: "Addon Sync Settings" });
 
+		containerEl.createEl("h3", { text: "Backup Paths" });
+
 		new Setting(containerEl)
-			.setName("Backup directory path")
-			.setDesc("Relative to vault root. Do NOT start with '.' as those are excluded from NAS sync. Default: meta")
+			.setName("Sync backup path (relative to vault)")
+			.setDesc("NAS will sync this folder. Do NOT start with '.'. Default: meta")
 			.addText((text) =>
 				text
 					.setPlaceholder("meta")
 					.setValue(this.settings.backupPath)
 					.onChange(async (value) => {
 						this.settings.backupPath = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Local safety snapshot path")
+			.setDesc("Starts with '.' so NAS skips it. For emergency local recovery only.")
+			.addText((text) =>
+				text
+					.setPlaceholder(".addon-sync-local")
+					.setValue(this.settings.localSnapshotPath)
+					.onChange(async (value) => {
+						this.settings.localSnapshotPath = value;
 						await this.plugin.saveSettings();
 					})
 			);
@@ -80,19 +92,19 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 
 		if (this.settings.autoBackupEnabled) {
 			new Setting(containerEl)
-				.setName("Backup interval (minutes)")
+				.setName("Backup interval")
 				.setDesc("How often to create automatic backups")
-				.addSlider((slider) =>
-					slider
-						.setLimits(5, 240, 5)
-						.setValue(this.settings.autoBackupIntervalMinutes)
-						.setDynamicTooltip()
-						.onChange(async (value) => {
-							this.settings.autoBackupIntervalMinutes = value;
-							await this.plugin.saveSettings();
-							this.plugin.scheduler.configure(this.settings);
-						})
-				);
+				.addDropdown((dropdown) => {
+					for (const opt of INTERVAL_OPTIONS) {
+						dropdown.addOption(String(opt.value), opt.label);
+					}
+					dropdown.setValue(String(this.settings.autoBackupIntervalMinutes));
+					dropdown.onChange(async (value) => {
+						this.settings.autoBackupIntervalMinutes = parseInt(value);
+						await this.plugin.saveSettings();
+						this.plugin.scheduler.configure(this.settings);
+					});
+				});
 		}
 
 		containerEl.createEl("h3", { text: "Startup Behavior" });
@@ -121,27 +133,41 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 					})
 			);
 
-		containerEl.createEl("h3", { text: "History" });
+		containerEl.createEl("h3", { text: "History Retention" });
 
 		new Setting(containerEl)
-			.setName("History retention count")
-			.setDesc("Maximum number of history snapshots to keep")
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 50, 1)
-					.setValue(this.settings.historyRetentionCount)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.settings.historyRetentionCount = value;
-						await this.plugin.saveSettings();
-					})
-			);
+			.setName("Sync history retention")
+			.setDesc("Number of versioned snapshots to keep in the sync folder (NAS synced)")
+			.addDropdown((dropdown) => {
+				for (const opt of RETENTION_OPTIONS) {
+					dropdown.addOption(String(opt.value), opt.label);
+				}
+				dropdown.setValue(String(this.settings.syncHistoryRetentionCount));
+				dropdown.onChange(async (value) => {
+					this.settings.syncHistoryRetentionCount = parseInt(value);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Local safety retention")
+			.setDesc("Number of local snapshots to keep (not synced, for emergency recovery)")
+			.addDropdown((dropdown) => {
+				for (const opt of RETENTION_OPTIONS) {
+					dropdown.addOption(String(opt.value), opt.label);
+				}
+				dropdown.setValue(String(this.settings.localSnapshotRetentionCount));
+				dropdown.onChange(async (value) => {
+					this.settings.localSnapshotRetentionCount = parseInt(value);
+					await this.plugin.saveSettings();
+				});
+			});
 
 		containerEl.createEl("h3", { text: "Manual Actions" });
 
 		new Setting(containerEl)
 			.setName("Create backup now")
-			.setDesc("Manually create a backup of current settings")
+			.setDesc("Backup current config to sync folder + local safety snapshot")
 			.addButton((btn) =>
 				btn
 					.setButtonText("Backup")
@@ -157,15 +183,15 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Restore latest backup")
-			.setDesc("Restore settings from the latest backup")
+			.setName("Restore from backup")
+			.setDesc("Choose a version from sync history or local snapshots to restore")
 			.addButton((btn) =>
 				btn
-					.setButtonText("Restore")
+					.setButtonText("Browse Versions")
 					.setWarning()
 					.onClick(async () => {
 						try {
-							await this.plugin.restoreManager.restoreLatest();
+							await this.plugin.restoreManager.restoreFromHistory();
 						} catch (err: any) {
 							new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
 						}
@@ -173,15 +199,15 @@ export class AddonSyncSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Restore from history")
-			.setDesc("Choose a history snapshot to restore")
+			.setName("Restore latest backup")
+			.setDesc("Quick restore from the latest sync backup")
 			.addButton((btn) =>
 				btn
-					.setButtonText("Browse History")
+					.setButtonText("Restore Latest")
 					.setWarning()
 					.onClick(async () => {
 						try {
-							await this.plugin.restoreManager.restoreFromHistory();
+							await this.plugin.restoreManager.restoreLatest();
 						} catch (err: any) {
 							new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
 						}

@@ -1,0 +1,18 @@
+{
+  "hideStatus": false,
+  "hideTabs": false,
+  "hideScroll": false,
+  "hideSidebarButtons": false,
+  "hideTooltips": false,
+  "hideFileNavButtons": false,
+  "hideSearchSuggestions": false,
+  "hideSearchCounts": false,
+  "hideInstructions": false,
+  "hidePropertiesReading": false,
+  "hideVault": false,
+  "hideAppRibbon": false,
+  "hideStatusBar": false,
+  "hideSearchButtons": false,
+  "hideScrollbars": true,
+  "hideMetadata": false
+}

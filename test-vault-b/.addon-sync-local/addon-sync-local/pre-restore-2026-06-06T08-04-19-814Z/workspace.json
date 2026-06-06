@@ -1,0 +1,23 @@
+{
+  "main": {
+    "id": "vault-b-workspace",
+    "type": "split",
+    "children": [
+      {
+        "id": "leaf-b1",
+        "type": "leaf",
+        "state": {
+          "type": "empty"
+        }
+      },
+      {
+        "id": "leaf-b2",
+        "type": "leaf",
+        "state": {
+          "type": "graph",
+          "state": {}
+        }
+      }
+    ]
+  }
+}

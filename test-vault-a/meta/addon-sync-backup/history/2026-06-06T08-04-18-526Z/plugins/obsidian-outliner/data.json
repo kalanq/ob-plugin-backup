@@ -1,0 +1,9 @@
+{
+  "strikethroughComplete": false,
+  "rightClickComplete": false,
+  "styleListBorderRadius": 4,
+  "styleLists:": true,
+  "verticalLines": true,
+  "dragAndDrop": true,
+  "stickCursor": "bullet-and-checkbox"
+}

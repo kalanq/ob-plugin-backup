@@ -1,0 +1,10 @@
+{
+  "enableJQuery": false,
+  "enableHtmlLabels": true,
+  "prettyRender": true,
+  "inlineQueries": true,
+  "renderNullAs": "-",
+  "dateformat": "yyyy-MM-dd",
+  "dateTimeformat": "yyyy-MM-dd HH:mm",
+  "defaultDateFormat": "yyyy-MM-dd"
+}

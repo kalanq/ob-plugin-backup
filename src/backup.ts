@@ -1,160 +1,179 @@
-import { App, FileSystemAdapter } from "obsidian";
-import type { AddonSyncSettings, BackupMeta } from "./types";
+import { App, Notice } from "obsidian";
+import type { AddonSyncSettings, BackupMeta, FileChange } from "./types";
 import {
 	BACKUP_DIR_NAME,
 	LATEST_DIR_NAME,
 	HISTORY_DIR_NAME,
 	META_FILE_NAME,
+	LOCAL_SNAPSHOT_DIR_NAME,
 	CONFIG_FILES,
 } from "./constants";
+
+const fs = require("fs");
+const path = require("path");
 
 export class BackupManager {
 	private app: App;
 	private settings: AddonSyncSettings;
-	private configDir: string;
 
 	constructor(app: App, settings: AddonSyncSettings) {
 		this.app = app;
 		this.settings = settings;
-		this.configDir = (app.vault as any).configDir || ".obsidian";
 	}
 
-	updateSettings(settings: AddonSyncSettings) {
+	updateSettings(settings: AddonSyncSettings): void {
 		this.settings = settings;
 	}
 
-	getBackupRoot(): string {
-		const adapter = this.app.vault.adapter as FileSystemAdapter;
-		const vaultPath = adapter.getBasePath();
-		const backupPath = this.settings.backupPath;
-
-		if (!backupPath) return "";
-
-		if (backupPath.includes(":") || backupPath.startsWith("/")) {
-			return backupPath;
-		}
-
-		return `${vaultPath}/${backupPath}`;
+	private getVaultPath(): string {
+		return (this.app.vault.adapter as any).getBasePath();
 	}
 
-	getBackupDir(): string {
-		const root = this.getBackupRoot();
-		return root ? `${root}/${BACKUP_DIR_NAME}` : "";
+	private getConfigPath(): string {
+		return path.join(this.getVaultPath(), ".obsidian");
 	}
 
-	getLatestDir(): string {
-		const dir = this.getBackupDir();
-		return dir ? `${dir}/${LATEST_DIR_NAME}` : "";
+	private getSyncBackupRoot(): string {
+		const p = this.settings.backupPath;
+		if (!p) return "";
+		if (p.includes(":") || p.startsWith("/")) return p;
+		return path.join(this.getVaultPath(), p);
 	}
 
-	getHistoryDir(): string {
-		const dir = this.getBackupDir();
-		return dir ? `${dir}/${HISTORY_DIR_NAME}` : "";
+	private getSyncBackupDir(): string {
+		const root = this.getSyncBackupRoot();
+		return root ? path.join(root, BACKUP_DIR_NAME) : "";
+	}
+
+	private getLocalSnapshotRoot(): string {
+		const p = this.settings.localSnapshotPath;
+		if (!p) return "";
+		if (p.includes(":") || p.startsWith("/")) return p;
+		return path.join(this.getVaultPath(), p);
+	}
+
+	private getLocalSnapshotDir(): string {
+		const root = this.getLocalSnapshotRoot();
+		return root ? path.join(root, LOCAL_SNAPSHOT_DIR_NAME) : "";
 	}
 
 	async createBackup(): Promise<void> {
-		const backupDir = this.getBackupDir();
-		if (!backupDir) {
+		const syncDir = this.getSyncBackupDir();
+		if (!syncDir) {
 			throw new Error("Backup path not configured");
 		}
 
-		const latestDir = this.getLatestDir();
-		const fs = require("fs") as typeof import("fs");
-		const path = require("path") as typeof import("path");
+		const configPath = this.getConfigPath();
+		const latestDir = path.join(syncDir, LATEST_DIR_NAME);
 
-		fs.mkdirSync(latestDir, { recursive: true });
+		const previousMeta = await this.readMeta();
+		const changes: string[] = [];
 
-		const filesToBackup = await this.collectBackupFiles();
+		const backupFiles = this.collectBackupFiles(configPath, latestDir);
 
-		for (const { source, dest } of filesToBackup) {
-			const destDir = path.dirname(dest);
-			fs.mkdirSync(destDir, { recursive: true });
-			if (fs.existsSync(source)) {
-				fs.copyFileSync(source, dest);
-			}
+		for (const file of backupFiles) {
+			fs.mkdirSync(path.dirname(file.dest), { recursive: true });
+			fs.copyFileSync(file.source, file.dest);
 		}
 
-		await this.updateMeta();
+		const meta = this.buildMeta(backupFiles, configPath);
+
+		if (previousMeta) {
+			const detectedChanges = this.detectChanges(previousMeta.fileHashes, meta.fileHashes);
+			for (const change of detectedChanges) {
+				const prefix = change.type === "added" ? "+" : change.type === "deleted" ? "-" : "~";
+				changes.push(`${prefix} ${change.relativePath}`);
+			}
+		} else {
+			changes.push("+ Initial backup");
+		}
+
+		meta.changelog = changes;
+
+		const now = new Date();
+		const timestamp = now.toISOString().replace(/[:.]/g, "-");
+		await this.createSyncHistorySnapshot(syncDir, latestDir, timestamp, meta);
+
+		await this.createLocalSnapshot(configPath, timestamp, meta);
+
+		fs.mkdirSync(syncDir, { recursive: true });
+		fs.writeFileSync(path.join(syncDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
+
+		this.cleanHistory(
+			path.join(syncDir, HISTORY_DIR_NAME),
+			this.settings.syncHistoryRetentionCount,
+		);
+		this.cleanHistory(
+			this.getLocalSnapshotDir(),
+			this.settings.localSnapshotRetentionCount,
+		);
 	}
 
-	private async collectBackupFiles(): Promise<Array<{ source: string; dest: string }>> {
-		const adapter = this.app.vault.adapter as FileSystemAdapter;
-		const vaultPath = adapter.getBasePath();
-		const configPath = `${vaultPath}/${this.configDir}`;
-		const latestDir = this.getLatestDir();
-		const fs = require("fs") as typeof import("fs");
+	private detectChanges(
+		oldHashes: Record<string, string>,
+		newHashes: Record<string, string>,
+	): FileChange[] {
+		const changes: FileChange[] = [];
+		for (const [file, hash] of Object.entries(newHashes)) {
+			if (!oldHashes[file]) {
+				changes.push({ path: file, relativePath: file, type: "added" });
+			} else if (oldHashes[file] !== hash) {
+				changes.push({ path: file, relativePath: file, type: "modified" });
+			}
+		}
+		for (const file of Object.keys(oldHashes)) {
+			if (!newHashes[file]) {
+				changes.push({ path: file, relativePath: file, type: "deleted" });
+			}
+		}
+		return changes;
+	}
+
+	private collectBackupFiles(configPath: string, latestDir: string): Array<{ source: string; dest: string }> {
 		const result: Array<{ source: string; dest: string }> = [];
 
-		const addConfigFile = (filename: string) => {
-			result.push({
-				source: `${configPath}/${filename}`,
-				dest: `${latestDir}/${filename}`,
-			});
+		const addConfigFile = (file: string) => {
+			const src = path.join(configPath, file);
+			if (fs.existsSync(src)) {
+				result.push({ source: src, dest: path.join(latestDir, file) });
+			}
 		};
 
 		if (this.settings.backupAppearance) {
-			for (const f of CONFIG_FILES.appearance) {
-				addConfigFile(f);
-			}
-			const themesDir = `${configPath}/themes`;
+			for (const f of CONFIG_FILES.appearance) addConfigFile(f);
+			const themesDir = path.join(configPath, "themes");
 			if (fs.existsSync(themesDir)) {
-				const themes = fs.readdirSync(themesDir);
-				for (const theme of themes) {
-					const themePath = `${themesDir}/${theme}`;
-					if (fs.statSync(themePath).isDirectory()) {
-						const files = fs.readdirSync(themePath);
-						for (const f of files) {
-							result.push({
-								source: `${themePath}/${f}`,
-								dest: `${latestDir}/themes/${theme}/${f}`,
-							});
-						}
-					}
-				}
+				this.collectDirFiles(themesDir, path.join(latestDir, "themes"), result);
 			}
-			const snippetsDir = `${configPath}/snippets`;
+			const snippetsDir = path.join(configPath, "snippets");
 			if (fs.existsSync(snippetsDir)) {
-				const files = fs.readdirSync(snippetsDir);
-				for (const f of files) {
-					if (f.endsWith(".css")) {
-						result.push({
-							source: `${snippetsDir}/${f}`,
-							dest: `${latestDir}/snippets/${f}`,
-						});
-					}
-				}
+				this.collectDirFiles(snippetsDir, path.join(latestDir, "snippets"), result);
 			}
 		}
 
 		if (this.settings.backupHotkeys) {
-			for (const f of CONFIG_FILES.hotkeys) {
-				addConfigFile(f);
-			}
+			for (const f of CONFIG_FILES.hotkeys) addConfigFile(f);
 		}
 
 		if (this.settings.backupCorePlugins) {
-			for (const f of CONFIG_FILES.corePlugins) {
-				addConfigFile(f);
-			}
+			for (const f of CONFIG_FILES.corePlugins) addConfigFile(f);
 		}
 
 		if (this.settings.backupCommunityPlugins) {
-			for (const f of CONFIG_FILES.communityPlugins) {
-				addConfigFile(f);
-			}
-			const pluginsDir = `${configPath}/plugins`;
+			for (const f of CONFIG_FILES.communityPlugins) addConfigFile(f);
+			const pluginsDir = path.join(configPath, "plugins");
 			if (fs.existsSync(pluginsDir)) {
 				const plugins = fs.readdirSync(pluginsDir);
 				for (const pluginId of plugins) {
-					const pluginPath = `${pluginsDir}/${pluginId}`;
+					const pluginPath = path.join(pluginsDir, pluginId);
 					if (fs.statSync(pluginPath).isDirectory()) {
 						const files = fs.readdirSync(pluginPath);
 						for (const file of files) {
-							const filePath = `${pluginPath}/${file}`;
+							const filePath = path.join(pluginPath, file);
 							if (fs.statSync(filePath).isFile()) {
 								result.push({
 									source: filePath,
-									dest: `${latestDir}/plugins/${pluginId}/${file}`,
+									dest: path.join(latestDir, "plugins", pluginId, file),
 								});
 							}
 						}
@@ -164,56 +183,110 @@ export class BackupManager {
 		}
 
 		if (this.settings.backupAppSettings) {
-			for (const f of CONFIG_FILES.appSettings) {
-				addConfigFile(f);
-			}
+			for (const f of CONFIG_FILES.appSettings) addConfigFile(f);
 		}
 
 		if (this.settings.backupBookmarks) {
-			for (const f of CONFIG_FILES.bookmarks) {
-				addConfigFile(f);
-			}
+			for (const f of CONFIG_FILES.bookmarks) addConfigFile(f);
 		}
 
 		if (this.settings.backupGraph) {
-			for (const f of CONFIG_FILES.graph) {
-				addConfigFile(f);
-			}
+			for (const f of CONFIG_FILES.graph) addConfigFile(f);
 		}
 
 		return result;
 	}
 
-	async createHistorySnapshot(): Promise<string | null> {
-		const latestDir = this.getLatestDir();
-		const historyDir = this.getHistoryDir();
-		const fs = require("fs") as typeof import("fs");
+	private collectDirFiles(srcDir: string, destDir: string, result: Array<{ source: string; dest: string }>): void {
+		const entries = fs.readdirSync(srcDir);
+		for (const entry of entries) {
+			const srcPath = path.join(srcDir, entry);
+			if (fs.statSync(srcPath).isDirectory()) {
+				this.collectDirFiles(srcPath, path.join(destDir, entry), result);
+			} else if (fs.statSync(srcPath).isFile()) {
+				result.push({ source: srcPath, dest: path.join(destDir, entry) });
+			}
+		}
+	}
 
-		if (!fs.existsSync(latestDir)) {
-			return null;
+	private buildMeta(backupFiles: Array<{ source: string; dest: string }>, configPath: string): BackupMeta {
+		const now = new Date();
+		const fileHashes: Record<string, string> = {};
+		const pluginVersions: Record<string, string> = {};
+
+		for (const file of backupFiles) {
+			const content = fs.readFileSync(file.source);
+			const relativePath = path.relative(configPath, file.source).replace(/\\/g, "/");
+			fileHashes[relativePath] = this.simpleHash(content.toString());
+
+			const match = relativePath.match(/^plugins\/([^/]+)\/manifest\.json$/);
+			if (match) {
+				try {
+					const manifest = JSON.parse(content.toString());
+					pluginVersions[match[1]] = manifest.version || "unknown";
+				} catch {}
+			}
 		}
 
-		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		const snapshotDir = `${historyDir}/${timestamp}`;
-		fs.mkdirSync(snapshotDir, { recursive: true });
+		return {
+			version: "1.0.0",
+			lastBackupTime: now.getTime(),
+			lastBackupTimeStr: now.toISOString(),
+			fileHashes,
+			changelog: [],
+			pluginVersions,
+		};
+	}
 
-		this.copyDirRecursive(latestDir, snapshotDir);
+	private simpleHash(str: string): string {
+		let hash = 0;
+		for (let i = 0; i < str.length; i++) {
+			const char = str.charCodeAt(i);
+			hash = ((hash << 5) - hash) + char;
+			hash |= 0;
+		}
+		return hash.toString(16);
+	}
 
-		await this.cleanHistory();
+	private async createSyncHistorySnapshot(
+		syncDir: string,
+		latestDir: string,
+		timestamp: string,
+		meta: BackupMeta,
+	): Promise<void> {
+		const historyDir = path.join(syncDir, HISTORY_DIR_NAME, timestamp);
+		if (!fs.existsSync(latestDir)) return;
 
-		return timestamp;
+		this.copyDirRecursive(latestDir, historyDir);
+		fs.writeFileSync(
+			path.join(historyDir, META_FILE_NAME),
+			JSON.stringify(meta, null, 2),
+		);
+	}
+
+	private async createLocalSnapshot(
+		configPath: string,
+		timestamp: string,
+		meta: BackupMeta,
+	): Promise<void> {
+		const localDir = this.getLocalSnapshotDir();
+		if (!localDir) return;
+
+		const snapshotDir = path.join(localDir, timestamp);
+		this.copyDirRecursive(configPath, snapshotDir);
+
+		fs.writeFileSync(
+			path.join(snapshotDir, META_FILE_NAME),
+			JSON.stringify(meta, null, 2),
+		);
 	}
 
 	private copyDirRecursive(src: string, dest: string): void {
-		const fs = require("fs") as typeof import("fs");
-
 		fs.mkdirSync(dest, { recursive: true });
 		const entries = fs.readdirSync(src, { withFileTypes: true });
-
 		for (const entry of entries) {
-			const srcPath = `${src}/${entry.name}`;
-			const destPath = `${dest}/${entry.name}`;
-
+			const srcPath = path.join(src, entry.name);
+			const destPath = path.join(dest, entry.name);
 			if (entry.isDirectory()) {
 				this.copyDirRecursive(srcPath, destPath);
 			} else {
@@ -222,106 +295,99 @@ export class BackupManager {
 		}
 	}
 
-	private async cleanHistory(): Promise<void> {
-		const historyDir = this.getHistoryDir();
-		const fs = require("fs") as typeof import("fs");
-
+	private cleanHistory(historyDir: string, retentionCount: number): void {
 		if (!fs.existsSync(historyDir)) return;
-
-		const entries = fs.readdirSync(historyDir)
-			.filter((e: string) => {
-				return fs.statSync(`${historyDir}/${e}`).isDirectory();
-			})
-			.sort()
-			.reverse();
-
-		const maxCount = this.settings.historyRetentionCount;
-		if (entries.length > maxCount) {
-			for (let i = maxCount; i < entries.length; i++) {
-				fs.rmSync(`${historyDir}/${entries[i]}`, { recursive: true, force: true });
+		const entries = fs.readdirSync(historyDir).sort();
+		while (entries.length > retentionCount) {
+			const oldest = entries.shift();
+			if (oldest) {
+				fs.rmSync(path.join(historyDir, oldest), { recursive: true, force: true });
 			}
 		}
-	}
-
-	private async updateMeta(): Promise<void> {
-		const backupDir = this.getBackupDir();
-		const latestDir = this.getLatestDir();
-		const fs = require("fs") as typeof import("fs");
-
-		const now = Date.now();
-		const fileHashes: Record<string, string> = {};
-
-		if (fs.existsSync(latestDir)) {
-			this.computeHashes(latestDir, latestDir, fileHashes);
-		}
-
-		const meta: BackupMeta = {
-			lastBackupTime: now,
-			lastBackupTimeStr: new Date(now).toISOString(),
-			fileHashes,
-			version: "1.0.0",
-		};
-
-		fs.writeFileSync(
-			`${backupDir}/${META_FILE_NAME}`,
-			JSON.stringify(meta, null, 2),
-			"utf-8"
-		);
-	}
-
-	private computeHashes(baseDir: string, currentDir: string, hashes: Record<string, string>): void {
-		const fs = require("fs") as typeof import("fs");
-		const path = require("path") as typeof import("path");
-
-		const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-		for (const entry of entries) {
-			const fullPath = `${currentDir}/${entry.name}`;
-			if (entry.isDirectory()) {
-				this.computeHashes(baseDir, fullPath, hashes);
-			} else {
-				const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
-				const content = fs.readFileSync(fullPath, "utf-8");
-				hashes[relativePath] = this.simpleHash(content);
-			}
-		}
-	}
-
-	simpleHash(str: string): string {
-		let hash = 0;
-		for (let i = 0; i < str.length; i++) {
-			const char = str.charCodeAt(i);
-			hash = ((hash << 5) - hash) + char;
-			hash |= 0;
-		}
-		return hash.toString(36);
 	}
 
 	async readMeta(): Promise<BackupMeta | null> {
-		const backupDir = this.getBackupDir();
-		const fs = require("fs") as typeof import("fs");
-
-		const metaPath = `${backupDir}/${META_FILE_NAME}`;
-		if (!fs.existsSync(metaPath)) {
+		const syncDir = this.getSyncBackupDir();
+		if (!syncDir) return null;
+		const metaPath = path.join(syncDir, META_FILE_NAME);
+		if (!fs.existsSync(metaPath)) return null;
+		try {
+			return JSON.parse(fs.readFileSync(metaPath, "utf8"));
+		} catch {
 			return null;
 		}
-
-		const content = fs.readFileSync(metaPath, "utf-8");
-		return JSON.parse(content) as BackupMeta;
 	}
 
-	async getHistoryList(): Promise<string[]> {
-		const historyDir = this.getHistoryDir();
-		const fs = require("fs") as typeof import("fs");
+	getSyncBackupDir(): string {
+		return this.getSyncBackupDirInternal();
+	}
 
-		if (!fs.existsSync(historyDir)) {
-			return [];
+	private getSyncBackupDirInternal(): string {
+		return this.getSyncBackupDir();
+	}
+
+	getSyncHistoryDir(): string {
+		return path.join(this.getSyncBackupDir(), HISTORY_DIR_NAME);
+	}
+
+	getSyncLatestDir(): string {
+		return path.join(this.getSyncBackupDir(), LATEST_DIR_NAME);
+	}
+
+	getLocalSnapshotDirPublic(): string {
+		return this.getLocalSnapshotDir();
+	}
+
+	getHistoryList(): Array<{ timestamp: string; displayName: string; meta: BackupMeta | null }> {
+		const historyDir = this.getSyncHistoryDir();
+		if (!fs.existsSync(historyDir)) return [];
+
+		const entries = fs.readdirSync(historyDir).sort().reverse();
+		return entries.map((timestamp) => {
+			const metaPath = path.join(historyDir, timestamp, META_FILE_NAME);
+			let meta: BackupMeta | null = null;
+			try {
+				if (fs.existsSync(metaPath)) {
+					meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+				}
+			} catch {}
+
+			const displayName = this.formatTimestamp(timestamp);
+			return { timestamp, displayName, meta };
+		});
+	}
+
+	getLocalSnapshotList(): Array<{ timestamp: string; displayName: string }> {
+		const localDir = this.getLocalSnapshotDir();
+		if (!fs.existsSync(localDir)) return [];
+
+		const entries = fs.readdirSync(localDir).sort().reverse();
+		return entries.map((timestamp) => ({
+			timestamp,
+			displayName: "Local: " + this.formatTimestamp(timestamp),
+		}));
+	}
+
+	private formatTimestamp(ts: string): string {
+		try {
+			const normalized = ts.replace(/-/g, (m, offset) => {
+				if (offset < 10) return "-";
+				if (offset === 10) return "T";
+				if (offset === 13 || offset === 16) return ":";
+				return "-";
+			});
+			const date = new Date(normalized.endsWith("Z") ? normalized : normalized + "Z");
+			if (isNaN(date.getTime())) return ts;
+			return date.toLocaleString("zh-CN", {
+				year: "numeric",
+				month: "2-digit",
+				day: "2-digit",
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+			});
+		} catch {
+			return ts;
 		}
-
-		return fs.readdirSync(historyDir)
-			.filter((e: string) => {
-				return fs.statSync(`${historyDir}/${e}`).isDirectory();
-			})
-			.sort()
-			.reverse();
 	}
 }

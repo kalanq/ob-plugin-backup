@@ -1,5 +1,6 @@
 export interface AddonSyncSettings {
 	backupPath: string;
+	localSnapshotPath: string;
 	backupAppearance: boolean;
 	backupHotkeys: boolean;
 	backupCorePlugins: boolean;
@@ -11,11 +12,13 @@ export interface AddonSyncSettings {
 	autoBackupIntervalMinutes: number;
 	autoBackupOnStartup: boolean;
 	checkChangesOnStartup: boolean;
-	historyRetentionCount: number;
+	syncHistoryRetentionCount: number;
+	localSnapshotRetentionCount: number;
 }
 
 export const DEFAULT_SETTINGS: AddonSyncSettings = {
 	backupPath: "meta",
+	localSnapshotPath: ".addon-sync-local",
 	backupAppearance: true,
 	backupHotkeys: true,
 	backupCorePlugins: true,
@@ -27,14 +30,17 @@ export const DEFAULT_SETTINGS: AddonSyncSettings = {
 	autoBackupIntervalMinutes: 30,
 	autoBackupOnStartup: false,
 	checkChangesOnStartup: true,
-	historyRetentionCount: 10,
+	syncHistoryRetentionCount: 10,
+	localSnapshotRetentionCount: 5,
 };
 
 export interface BackupMeta {
+	version: string;
 	lastBackupTime: number;
 	lastBackupTimeStr: string;
 	fileHashes: Record<string, string>;
-	version: string;
+	changelog: string[];
+	pluginVersions: Record<string, string>;
 }
 
 export type ChangeType = "added" | "modified" | "deleted";
@@ -51,4 +57,11 @@ export interface BackupCategory {
 	key: keyof AddonSyncSettings;
 	label: string;
 	description: string;
+}
+
+export interface HistoryEntry {
+	timestamp: string;
+	displayName: string;
+	changelog: string[];
+	pluginVersions: Record<string, string>;
 }

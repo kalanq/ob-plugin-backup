@@ -1,0 +1,20 @@
+{
+  "daily": {
+    "format": "YYYY/YYYY-MM/YYYYMMDD",
+    "template": "60_Templates/ELN_Daily_Template.md",
+    "folder": "20_Lab_Notes",
+    "enabled": true
+  },
+  "weekly": {
+    "format": "",
+    "template": "",
+    "folder": "",
+    "enabled": false
+  },
+  "monthly": {
+    "format": "",
+    "template": "",
+    "folder": "",
+    "enabled": false
+  }
+}

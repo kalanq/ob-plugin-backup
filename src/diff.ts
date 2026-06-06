@@ -1,143 +1,119 @@
-import { App, Notice, FileSystemAdapter } from "obsidian";
-import type { AddonSyncSettings, BackupMeta, FileChange, ChangeType } from "./types";
+import { App } from "obsidian";
+import type { AddonSyncSettings, FileChange, BackupMeta } from "./types";
 import { BackupManager } from "./backup";
 import { CONFIG_FILES } from "./constants";
+
+const fs = require("fs");
+const path = require("path");
 
 export class DiffChecker {
 	private app: App;
 	private settings: AddonSyncSettings;
 	private backupManager: BackupManager;
-	private configDir: string;
 
 	constructor(app: App, settings: AddonSyncSettings, backupManager: BackupManager) {
 		this.app = app;
 		this.settings = settings;
 		this.backupManager = backupManager;
-		this.configDir = (app.vault as any).configDir || ".obsidian";
 	}
 
-	updateSettings(settings: AddonSyncSettings) {
+	updateSettings(settings: AddonSyncSettings): void {
 		this.settings = settings;
+	}
+
+	private getVaultPath(): string {
+		return (this.app.vault.adapter as any).getBasePath();
+	}
+
+	private getConfigPath(): string {
+		return path.join(this.getVaultPath(), ".obsidian");
 	}
 
 	async checkChanges(): Promise<FileChange[]> {
 		const meta = await this.backupManager.readMeta();
-		if (!meta) {
-			return [];
-		}
+		if (!meta) return [];
 
-		const latestDir = this.backupManager.getLatestDir();
-		const adapter = this.app.vault.adapter as FileSystemAdapter;
-		const vaultPath = adapter.getBasePath();
-		const configPath = `${vaultPath}/${this.configDir}`;
-		const fs = require("fs") as typeof import("fs");
-		const path = require("path") as typeof import("path");
+		const configPath = this.getConfigPath();
+		const currentFiles = this.collectCurrentConfigFiles(configPath);
 		const changes: FileChange[] = [];
 
-		for (const [relativePath, backupHash] of Object.entries(meta.fileHashes)) {
-			const currentPath = `${configPath}/${relativePath}`;
+		for (const relativePath of currentFiles) {
+			const fullPath = path.join(configPath, relativePath);
+			const content = fs.readFileSync(fullPath, "utf8");
+			const hash = this.simpleHash(content);
 
-			if (!fs.existsSync(currentPath)) {
-				changes.push({
-					path: currentPath,
-					relativePath,
-					type: "deleted",
-				});
-				continue;
-			}
-
-			const currentContent = fs.readFileSync(currentPath, "utf-8");
-			const currentHash = this.backupManager.simpleHash(currentContent);
-
-			if (currentHash !== backupHash) {
-				changes.push({
-					path: currentPath,
-					relativePath,
-					type: "modified",
-				});
+			if (!meta.fileHashes[relativePath]) {
+				changes.push({ path: fullPath, relativePath, type: "added" });
+			} else if (meta.fileHashes[relativePath] !== hash) {
+				changes.push({ path: fullPath, relativePath, type: "modified" });
 			}
 		}
 
-		const currentFiles = this.collectCurrentConfigFiles(configPath);
-		for (const relPath of currentFiles) {
-			if (!(relPath in meta.fileHashes)) {
-				changes.push({
-					path: `${configPath}/${relPath}`,
-					relativePath: relPath,
-					type: "added",
-				});
+		for (const relativePath of Object.keys(meta.fileHashes)) {
+			const fullPath = path.join(configPath, relativePath);
+			if (!fs.existsSync(fullPath)) {
+				changes.push({ path: fullPath, relativePath, type: "deleted" });
 			}
 		}
 
 		return changes;
 	}
 
-	private collectCurrentConfigFiles(configPath: string): string[] {
-		const fs = require("fs") as typeof import("fs");
-		const result: string[] = [];
+	async hasChanges(): Promise<boolean> {
+		const changes = await this.checkChanges();
+		return changes.length > 0;
+	}
 
-		const addIfExists = (relativePath: string) => {
-			if (fs.existsSync(`${configPath}/${relativePath}`)) {
-				result.push(relativePath);
+	async getChangeSummary(): Promise<string> {
+		const changes = await this.checkChanges();
+		if (changes.length === 0) return "No changes detected.";
+
+		const lines = changes.map((c) => {
+			const prefix = c.type === "added" ? "+" : c.type === "deleted" ? "-" : "~";
+			return `${prefix} ${c.relativePath}`;
+		});
+		return lines.join("\n");
+	}
+
+	private collectCurrentConfigFiles(configPath: string): string[] {
+		const result: string[] = [];
+		const addIfExists = (file: string) => {
+			if (fs.existsSync(path.join(configPath, file))) {
+				result.push(file);
 			}
 		};
 
 		if (this.settings.backupAppearance) {
-			for (const f of CONFIG_FILES.appearance) {
-				addIfExists(f);
-			}
-			const themesDir = `${configPath}/themes`;
+			for (const f of CONFIG_FILES.appearance) addIfExists(f);
+			const themesDir = path.join(configPath, "themes");
 			if (fs.existsSync(themesDir)) {
-				const themes = fs.readdirSync(themesDir);
-				for (const theme of themes) {
-					const themePath = `${themesDir}/${theme}`;
-					if (fs.statSync(themePath).isDirectory()) {
-						const files = fs.readdirSync(themePath);
-						for (const f of files) {
-							const rel = `themes/${theme}/${f}`;
-							if (fs.statSync(`${themePath}/${f}`).isFile()) {
-								result.push(rel);
-							}
-						}
-					}
-				}
+				this.collectDirFilesRecursive(themesDir, "themes", result);
 			}
-			const snippetsDir = `${configPath}/snippets`;
+			const snippetsDir = path.join(configPath, "snippets");
 			if (fs.existsSync(snippetsDir)) {
-				const files = fs.readdirSync(snippetsDir);
-				for (const f of files) {
-					if (f.endsWith(".css")) {
-						result.push(`snippets/${f}`);
-					}
-				}
+				this.collectDirFilesRecursive(snippetsDir, "snippets", result);
 			}
 		}
 
 		if (this.settings.backupHotkeys) {
-			for (const f of CONFIG_FILES.hotkeys) {
-				addIfExists(f);
-			}
+			for (const f of CONFIG_FILES.hotkeys) addIfExists(f);
 		}
 
 		if (this.settings.backupCorePlugins) {
-			for (const f of CONFIG_FILES.corePlugins) {
-				addIfExists(f);
-			}
+			for (const f of CONFIG_FILES.corePlugins) addIfExists(f);
 		}
 
 		if (this.settings.backupCommunityPlugins) {
-			for (const f of CONFIG_FILES.communityPlugins) {
-				addIfExists(f);
-			}
-			const pluginsDir = `${configPath}/plugins`;
+			for (const f of CONFIG_FILES.communityPlugins) addIfExists(f);
+			const pluginsDir = path.join(configPath, "plugins");
 			if (fs.existsSync(pluginsDir)) {
 				const plugins = fs.readdirSync(pluginsDir);
 				for (const pluginId of plugins) {
-					const pluginPath = `${pluginsDir}/${pluginId}`;
+					const pluginPath = path.join(pluginsDir, pluginId);
 					if (fs.statSync(pluginPath).isDirectory()) {
 						const files = fs.readdirSync(pluginPath);
 						for (const file of files) {
-							const fullPath = `${pluginPath}/${file}`;
+							const fullPath = path.join(pluginPath, file);
 							if (fs.statSync(fullPath).isFile()) {
 								result.push(`plugins/${pluginId}/${file}`);
 							}
@@ -148,45 +124,38 @@ export class DiffChecker {
 		}
 
 		if (this.settings.backupAppSettings) {
-			for (const f of CONFIG_FILES.appSettings) {
-				addIfExists(f);
-			}
+			for (const f of CONFIG_FILES.appSettings) addIfExists(f);
 		}
 
 		if (this.settings.backupBookmarks) {
-			for (const f of CONFIG_FILES.bookmarks) {
-				addIfExists(f);
-			}
+			for (const f of CONFIG_FILES.bookmarks) addIfExists(f);
 		}
 
 		if (this.settings.backupGraph) {
-			for (const f of CONFIG_FILES.graph) {
-				addIfExists(f);
-			}
+			for (const f of CONFIG_FILES.graph) addIfExists(f);
 		}
 
 		return result;
 	}
 
-	async getChangeSummary(): Promise<string> {
-		const changes = await this.checkChanges();
-
-		if (changes.length === 0) {
-			return "No changes detected. Config is in sync with backup.";
+	private simpleHash(str: string): string {
+		let hash = 0;
+		for (let i = 0; i < str.length; i++) {
+			const char = str.charCodeAt(i);
+			hash = ((hash << 5) - hash) + char;
+			hash |= 0;
 		}
-
-		const lines: string[] = [`${changes.length} change(s) detected:\n`];
-
-		for (const change of changes) {
-			const typeLabel = change.type === "added" ? "[+]" : change.type === "modified" ? "[~]" : "[-]";
-			lines.push(`${typeLabel} ${change.relativePath}`);
-		}
-
-		return lines.join("\n");
+		return hash.toString(16);
 	}
 
-	async hasChanges(): Promise<boolean> {
-		const changes = await this.checkChanges();
-		return changes.length > 0;
+	private collectDirFilesRecursive(dir: string, prefix: string, result: string[]): void {
+		for (const entry of fs.readdirSync(dir)) {
+			const fullPath = path.join(dir, entry);
+			if (fs.statSync(fullPath).isDirectory()) {
+				this.collectDirFilesRecursive(fullPath, `${prefix}/${entry}`, result);
+			} else if (fs.statSync(fullPath).isFile()) {
+				result.push(`${prefix}/${entry}`);
+			}
+		}
 	}
 }

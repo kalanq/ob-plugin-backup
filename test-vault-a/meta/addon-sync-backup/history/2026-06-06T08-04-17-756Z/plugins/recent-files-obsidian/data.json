@@ -1,0 +1,110 @@
+{
+  "recentFiles": [
+    {
+      "basename": "Welcome",
+      "path": "Welcome.md"
+    },
+    {
+      "basename": "SOP-LASER-001-v2.3",
+      "path": "00_SOPs/Active/SOP-LASER-001-v2.3.md"
+    },
+    {
+      "basename": "SOP-VACUUM-001-v1.5",
+      "path": "00_SOPs/Active/SOP-VACUUM-001-v1.5.md"
+    },
+    {
+      "basename": "SOP_Index",
+      "path": "00_SOPs/SOP_Index.md"
+    },
+    {
+      "basename": "Vault_Config",
+      "path": "99_System/Vault_Config.md"
+    },
+    {
+      "basename": "Plugin_Settings",
+      "path": "99_System/Plugin_Settings.md"
+    },
+    {
+      "basename": "CONVENTIONS",
+      "path": "98_AGENT/CONVENTIONS.md"
+    },
+    {
+      "basename": "CHANGELOG",
+      "path": "98_AGENT/CHANGELOG.md"
+    },
+    {
+      "basename": "ELN_Daily_Template",
+      "path": "60_Templates/ELN_Daily_Template.md"
+    },
+    {
+      "basename": "光学知识库导航",
+      "path": "50_Concepts/光学知识库导航.md"
+    },
+    {
+      "basename": "大学与机构索引",
+      "path": "50_Concepts/资源索引/大学与机构索引.md"
+    },
+    {
+      "basename": "PID参数调节",
+      "path": "50_Concepts/实验技巧/PID参数调节.md"
+    },
+    {
+      "basename": "AOM与EOM使用",
+      "path": "50_Concepts/实验技巧/AOM与EOM使用.md"
+    },
+    {
+      "basename": "真空技术基础",
+      "path": "50_Concepts/实验技巧/真空技术基础.md"
+    },
+    {
+      "basename": "噪声分析",
+      "path": "50_Concepts/实验技巧/噪声分析.md"
+    },
+    {
+      "basename": "温控技术",
+      "path": "50_Concepts/实验技巧/温控技术.md"
+    },
+    {
+      "basename": "探测技术",
+      "path": "50_Concepts/实验技巧/探测技术.md"
+    },
+    {
+      "basename": "光学像差",
+      "path": "50_Concepts/光学基础/光学像差.md"
+    },
+    {
+      "basename": "光学清洁",
+      "path": "50_Concepts/光学基础/光学清洁.md"
+    },
+    {
+      "basename": "光学薄膜",
+      "path": "50_Concepts/光学基础/光学薄膜.md"
+    },
+    {
+      "basename": "高斯光束",
+      "path": "50_Concepts/光学基础/高斯光束.md"
+    },
+    {
+      "basename": "光学系统设计",
+      "path": "50_Concepts/实验技巧/光学系统设计.md"
+    },
+    {
+      "basename": "反射镜选型指南",
+      "path": "50_Concepts/器件使用/反射镜选型指南.md"
+    },
+    {
+      "basename": "光路准直技巧",
+      "path": "50_Concepts/实验技巧/光路准直技巧.md"
+    },
+    {
+      "basename": "Equipment_Database",
+      "path": "40_Inventory/Equipment_Database.md"
+    }
+  ],
+  "omittedPaths": [],
+  "omittedTags": [],
+  "updateOn": "file-open",
+  "omitBookmarks": false,
+  "recentFileMaxCount": 30,
+  "recentFileListPath": ""
+}

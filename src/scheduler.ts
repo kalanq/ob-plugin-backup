@@ -25,7 +25,6 @@ export class BackupScheduler {
 
 	startAutoBackup(intervalMinutes: number): void {
 		this.stopAutoBackup();
-
 		if (intervalMinutes <= 0) return;
 
 		const intervalMs = intervalMinutes * 60 * 1000;
@@ -58,7 +57,7 @@ export class BackupScheduler {
 	async runStartupBackup(): Promise<void> {
 		try {
 			await this.backupManager.createBackup();
-			new Notice("Addon Sync: Auto backup completed on startup.");
+			new Notice("Addon Sync: Startup backup completed.");
 		} catch (err: any) {
 			console.error("Addon Sync: Startup backup failed", err);
 		}

@@ -1,0 +1,27 @@
+{
+  "template_folder": "60_Templates",
+  "templates_pairs": [],
+  "trigger_on_file_creation": true,
+  "auto_jump_to_cursor": true,
+  "enable_system_commands": false,
+  "shell_path": "",
+  "user_scripts_folder": "Scripts",
+  "empty_file_template": "60_Templates/ELN_Daily_Template.md",
+  "syntax_highlighting": true,
+  "enabled_templates_hotkeys": [
+    {
+      "template": "60_Templates/ELN_Daily_Template.md"
+    },
+    {
+      "template": "60_Templates/SOP_Template.md"
+    },
+    {
+      "template": "60_Templates/Project_Template.md"
+    },
+    {
+      "template": "60_Templates/Equipment_Card_Template.md"
+    }
+  ],
+  "startup_templates": [],
+  "js_site_file": ""
+}

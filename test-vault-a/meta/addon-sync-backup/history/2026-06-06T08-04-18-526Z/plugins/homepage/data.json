@@ -1,0 +1,14 @@
+{
+  "version": 4,
+  "homepages": {
+    "Main Homepage": {
+      "home-page": "50_Concepts/光学知识库导航",
+      "openMode": "Replace all",
+      "openView": "Preview",
+      "commands": [],
+      "value": "Home",
+      "kind": "File"
+    }
+  },
+  "separateMobile": false
+}

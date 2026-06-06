@@ -1,0 +1,13 @@
+{
+  "legacyEditor": false,
+  "readableLineLength": true,
+  "defaultViewMode": "source",
+  "showLineNumber": true,
+  "spellcheck": true,
+  "strictLineBreaks": false,
+  "showUnsupportedFiles": true,
+  "attachmentFolderPath": "attachments",
+  "newFileLocation": "current",
+  "promptDelete": true,
+  "showFrontmatter": true
+}

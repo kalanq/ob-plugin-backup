@@ -1,62 +1,125 @@
-import { App, Notice, FileSystemAdapter, FuzzySuggestModal } from "obsidian";
+import { App, Notice, FuzzySuggestModal } from "obsidian";
 import type { AddonSyncSettings } from "./types";
 import { BackupManager } from "./backup";
-import { BACKUP_DIR_NAME, LATEST_DIR_NAME, HISTORY_DIR_NAME } from "./constants";
+
+const fs = require("fs");
+const path = require("path");
 
 export class RestoreManager {
 	private app: App;
 	private settings: AddonSyncSettings;
 	private backupManager: BackupManager;
-	private configDir: string;
-	public isRestoring: boolean = false;
+	isRestoring = false;
 
 	constructor(app: App, settings: AddonSyncSettings, backupManager: BackupManager) {
 		this.app = app;
 		this.settings = settings;
 		this.backupManager = backupManager;
-		this.configDir = (app.vault as any).configDir || ".obsidian";
 	}
 
-	updateSettings(settings: AddonSyncSettings) {
+	updateSettings(settings: AddonSyncSettings): void {
 		this.settings = settings;
 	}
 
-	async restoreFromPath(backupPath: string): Promise<void> {
-		const adapter = this.app.vault.adapter as FileSystemAdapter;
-		const vaultPath = adapter.getBasePath();
-		const configPath = `${vaultPath}/${this.configDir}`;
-		const fs = require("fs") as typeof import("fs");
-		const path = require("path") as typeof import("path");
+	private getVaultPath(): string {
+		return (this.app.vault.adapter as any).getBasePath();
+	}
 
+	private getConfigPath(): string {
+		return path.join(this.getVaultPath(), ".obsidian");
+	}
+
+	async restoreLatest(): Promise<void> {
+		const latestDir = this.backupManager.getSyncLatestDir();
+		if (!fs.existsSync(latestDir)) {
+			new Notice("Addon Sync: No backup found.");
+			return;
+		}
+		await this.restoreFromPath(latestDir);
+	}
+
+	async restoreFromHistory(): Promise<void> {
+		const syncHistory = this.backupManager.getHistoryList();
+		const localSnapshots = this.backupManager.getLocalSnapshotList();
+
+		if (syncHistory.length === 0 && localSnapshots.length === 0) {
+			new Notice("Addon Sync: No history snapshots found.");
+			return;
+		}
+
+		const allEntries: Array<{
+			displayName: string;
+			path: string;
+			isLocal: boolean;
+			changelog: string[];
+		}> = [];
+
+		for (const entry of syncHistory) {
+			allEntries.push({
+				displayName: entry.displayName + (entry.meta?.changelog?.length ? ` (${entry.meta.changelog.length} changes)` : ""),
+				path: path.join(this.backupManager.getSyncHistoryDir(), entry.timestamp),
+				isLocal: false,
+				changelog: entry.meta?.changelog || [],
+			});
+		}
+
+		for (const entry of localSnapshots) {
+			allEntries.push({
+				displayName: entry.displayName,
+				path: path.join(this.backupManager.getLocalSnapshotDirPublic(), entry.timestamp),
+				isLocal: true,
+				changelog: [],
+			});
+		}
+
+		new HistorySelectModal(this.app, allEntries, (selected) => {
+			this.restoreFromPath(selected.path);
+		}).open();
+	}
+
+	async restoreFromPath(backupPath: string): Promise<void> {
 		if (!fs.existsSync(backupPath)) {
-			throw new Error(`Backup path not found: ${backupPath}`);
+			new Notice("Addon Sync: Backup path not found.");
+			return;
 		}
 
 		this.isRestoring = true;
 		try {
-			await this.backupManager.createHistorySnapshot();
+			const now = new Date();
+			const timestamp = now.toISOString().replace(/[:.]/g, "-");
+			const configPath = this.getConfigPath();
 
-			this.restoreDirRecursive(backupPath, configPath, backupPath);
+			this.createLocalSafetySnapshot(configPath, timestamp);
 
-			new Notice("Addon Sync: Settings restored successfully. Please reload Obsidian.", 5000);
+			this.restoreDirRecursive(backupPath, configPath);
+
+			new Notice("Addon Sync: Restore completed. Please reload Obsidian.", 8000);
+		} catch (err: any) {
+			new Notice(`Addon Sync: Restore failed - ${err.message}`, 5000);
+			throw err;
 		} finally {
 			this.isRestoring = false;
 		}
 	}
 
-	private restoreDirRecursive(srcDir: string, destDir: string, backupRoot: string): void {
-		const fs = require("fs") as typeof import("fs");
-		const path = require("path") as typeof import("path");
+	private createLocalSafetySnapshot(configPath: string, timestamp: string): void {
+		const localDir = this.backupManager.getLocalSnapshotDirPublic();
+		if (!localDir) return;
 
-		if (!fs.existsSync(srcDir)) return;
+		const snapshotDir = path.join(localDir, "pre-restore-" + timestamp);
+		this.copyDirRecursive(configPath, snapshotDir);
+	}
 
+	private restoreDirRecursive(srcDir: string, destDir: string): void {
 		const entries = fs.readdirSync(srcDir, { withFileTypes: true });
 		for (const entry of entries) {
-			const srcPath = `${srcDir}/${entry.name}`;
-			const destPath = `${destDir}/${entry.name}`;
+			const srcPath = path.join(srcDir, entry.name);
+			const destPath = path.join(destDir, entry.name);
+
+			if (entry.name === "meta.json") continue;
 
 			if (entry.isDirectory()) {
-				this.restoreDirRecursive(srcPath, destPath, backupRoot);
+				this.restoreDirRecursive(srcPath, destPath);
 			} else {
 				fs.mkdirSync(path.dirname(destPath), { recursive: true });
 				fs.copyFileSync(srcPath, destPath);
@@ -64,56 +127,62 @@ export class RestoreManager {
 		}
 	}
 
-	async restoreLatest(): Promise<void> {
-		const latestDir = this.backupManager.getLatestDir();
-		if (!latestDir) {
-			throw new Error("Backup path not configured");
+	private copyDirRecursive(src: string, dest: string): void {
+		fs.mkdirSync(dest, { recursive: true });
+		const entries = fs.readdirSync(src, { withFileTypes: true });
+		for (const entry of entries) {
+			const srcPath = path.join(src, entry.name);
+			const destPath = path.join(dest, entry.name);
+			if (entry.isDirectory()) {
+				this.copyDirRecursive(srcPath, destPath);
+			} else {
+				fs.copyFileSync(srcPath, destPath);
+			}
 		}
-		await this.restoreFromPath(latestDir);
-	}
-
-	async restoreFromHistory(): Promise<void> {
-		const historyList = await this.backupManager.getHistoryList();
-
-		if (historyList.length === 0) {
-			new Notice("Addon Sync: No history snapshots found.");
-			return;
-		}
-
-		const modal = new HistorySelectModal(this.app, historyList, async (selected) => {
-			const historyDir = this.backupManager.getHistoryDir();
-			const snapshotPath = `${historyDir}/${selected}`;
-			await this.restoreFromPath(snapshotPath);
-		});
-		modal.open();
 	}
 }
 
 class HistorySelectModal extends FuzzySuggestModal<string> {
-	private historyList: string[];
-	private onSelect: (item: string) => void;
+	private entries: Array<{
+		displayName: string;
+		path: string;
+		isLocal: boolean;
+		changelog: string[];
+	}>;
+	private onSelect: (entry: { path: string }) => void;
 
-	constructor(app: App, historyList: string[], onSelect: (item: string) => void) {
+	constructor(
+		app: App,
+		entries: Array<{
+			displayName: string;
+			path: string;
+			isLocal: boolean;
+			changelog: string[];
+		}>,
+		onSelect: (entry: { path: string }) => void,
+	) {
 		super(app);
-		this.historyList = historyList;
+		this.entries = entries;
 		this.onSelect = onSelect;
-		this.setPlaceholder("Select a history snapshot to restore...");
+		this.setPlaceholder("Select a version to restore...");
 	}
 
 	getItems(): string[] {
-		return this.historyList;
+		return this.entries.map((e) => e.displayName);
 	}
 
 	getItemText(item: string): string {
-		return item.replace(/-/g, (match, offset) => {
-			if (offset === 4 || offset === 7) return "-";
-			if (offset === 10) return " ";
-			if (offset === 13 || offset === 16) return ":";
-			return match;
-		});
+		return item;
 	}
 
 	onChooseItem(item: string, evt: MouseEvent | KeyboardEvent): void {
-		this.onSelect(item);
+		const entry = this.entries.find((e) => e.displayName === item);
+		if (entry) {
+			const changelogStr = entry.changelog.length > 0
+				? "\n\nChanges:\n" + entry.changelog.join("\n")
+				: "";
+			new Notice(`Addon Sync: Restoring ${item}${changelogStr}`, 8000);
+			this.onSelect(entry);
+		}
 	}
 }
