@@ -29,6 +29,8 @@ meta/
 !LICENSE
 !.gitignore
 !versions.json
+!install-plugin.cmd
+!install-plugin.ps1
 
 # 5. 允许跟踪 src 源码目录下的所有内容
 !src/
@@ -38,3 +40,9 @@ meta/
 !.github/
 !.github/workflows/
 !.github/workflows/**
+
+# 7. Allow focused regression tests for source-backed behavior
+!test/
+!test/test-plugin-selection.mjs
+!test/test-restore-preview.mjs
+!test/test-installer.ps1

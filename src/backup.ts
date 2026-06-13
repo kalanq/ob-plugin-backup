@@ -1,13 +1,15 @@
-import { App, Notice } from "obsidian";
-import type { AddonBackupSettings, BackupMeta, FileChange } from "./types";
+import type { App } from "obsidian";
+import type { AddonBackupSettings, BackupFile, BackupMeta, FileChange } from "./types";
 import {
 	BACKUP_DIR_NAME,
 	LATEST_DIR_NAME,
 	HISTORY_DIR_NAME,
 	META_FILE_NAME,
 	LOCAL_SNAPSHOT_DIR_NAME,
-	CONFIG_FILES,
 } from "./constants";
+import { getConfigDirName, getConfigPath, getVaultPath, resolveVaultPath } from "./path_utils";
+import { collectBackupFiles, getIncludedPluginIds, simpleHash } from "./file_utils";
+import { ensureDeviceIdentity } from "./device_utils";
 
 const fs = require("fs");
 const path = require("path");
@@ -26,30 +28,19 @@ export class BackupManager {
 	}
 
 	private getVaultPath(): string {
-		return (this.app.vault.adapter as any).getBasePath();
+		return getVaultPath(this.app);
 	}
 
 	private getConfigPath(): string {
-		return path.join(this.getVaultPath(), ".obsidian");
+		return getConfigPath(this.app);
 	}
 
 	private getSyncBackupRoot(): string {
-		const p = this.settings.backupPath;
-		if (!p) return "";
-		if (p.includes(":") || p.startsWith("/")) return p;
-		return path.join(this.getVaultPath(), p);
-	}
-
-	private getSyncBackupDir(): string {
-		const root = this.getSyncBackupRoot();
-		return root ? path.join(root, BACKUP_DIR_NAME) : "";
+		return resolveVaultPath(this.getVaultPath(), this.settings.backupPath);
 	}
 
 	private getLocalSnapshotRoot(): string {
-		const p = this.settings.localSnapshotPath;
-		if (!p) return "";
-		if (p.includes(":") || p.startsWith("/")) return p;
-		return path.join(this.getVaultPath(), p);
+		return resolveVaultPath(this.getVaultPath(), this.settings.localSnapshotPath);
 	}
 
 	private getLocalSnapshotDir(): string {
@@ -65,18 +56,24 @@ export class BackupManager {
 
 		const configPath = this.getConfigPath();
 		const latestDir = path.join(syncDir, LATEST_DIR_NAME);
+		const tempLatestDir = path.join(syncDir, `${LATEST_DIR_NAME}.tmp-${Date.now()}`);
 
 		const previousMeta = await this.readMeta();
 		const changes: string[] = [];
 
-		const backupFiles = this.collectBackupFiles(configPath, latestDir);
+		if (fs.existsSync(tempLatestDir)) {
+			fs.rmSync(tempLatestDir, { recursive: true, force: true });
+		}
+		fs.mkdirSync(tempLatestDir, { recursive: true });
+
+		const backupFiles = collectBackupFiles(configPath, tempLatestDir, this.settings);
 
 		for (const file of backupFiles) {
 			fs.mkdirSync(path.dirname(file.dest), { recursive: true });
 			fs.copyFileSync(file.source, file.dest);
 		}
 
-		const meta = this.buildMeta(backupFiles, configPath);
+		const meta = this.buildMeta(backupFiles);
 
 		if (previousMeta) {
 			const detectedChanges = this.detectChanges(previousMeta.fileHashes, meta.fileHashes);
@@ -92,11 +89,14 @@ export class BackupManager {
 
 		const now = new Date();
 		const timestamp = now.toISOString().replace(/[:.]/g, "-");
-		await this.createSyncHistorySnapshot(syncDir, latestDir, timestamp, meta);
-
+		await this.createSyncHistorySnapshot(syncDir, tempLatestDir, timestamp, meta);
 		await this.createLocalSnapshot(configPath, timestamp, meta);
 
 		fs.mkdirSync(syncDir, { recursive: true });
+		if (fs.existsSync(latestDir)) {
+			fs.rmSync(latestDir, { recursive: true, force: true });
+		}
+		fs.renameSync(tempLatestDir, latestDir);
 		fs.writeFileSync(path.join(syncDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 
 		this.cleanHistory(
@@ -129,97 +129,17 @@ export class BackupManager {
 		return changes;
 	}
 
-	private collectBackupFiles(configPath: string, latestDir: string): Array<{ source: string; dest: string }> {
-		const result: Array<{ source: string; dest: string }> = [];
-
-		const addConfigFile = (file: string) => {
-			const src = path.join(configPath, file);
-			if (fs.existsSync(src)) {
-				result.push({ source: src, dest: path.join(latestDir, file) });
-			}
-		};
-
-		if (this.settings.backupAppearance) {
-			for (const f of CONFIG_FILES.appearance) addConfigFile(f);
-			const themesDir = path.join(configPath, "themes");
-			if (fs.existsSync(themesDir)) {
-				this.collectDirFiles(themesDir, path.join(latestDir, "themes"), result);
-			}
-			const snippetsDir = path.join(configPath, "snippets");
-			if (fs.existsSync(snippetsDir)) {
-				this.collectDirFiles(snippetsDir, path.join(latestDir, "snippets"), result);
-			}
-		}
-
-		if (this.settings.backupHotkeys) {
-			for (const f of CONFIG_FILES.hotkeys) addConfigFile(f);
-		}
-
-		if (this.settings.backupCorePlugins) {
-			for (const f of CONFIG_FILES.corePlugins) addConfigFile(f);
-		}
-
-		if (this.settings.backupCommunityPlugins) {
-			for (const f of CONFIG_FILES.communityPlugins) addConfigFile(f);
-			const pluginsDir = path.join(configPath, "plugins");
-			if (fs.existsSync(pluginsDir)) {
-				const plugins = fs.readdirSync(pluginsDir);
-				for (const pluginId of plugins) {
-					const pluginPath = path.join(pluginsDir, pluginId);
-					if (fs.statSync(pluginPath).isDirectory()) {
-						const files = fs.readdirSync(pluginPath);
-						for (const file of files) {
-							const filePath = path.join(pluginPath, file);
-							if (fs.statSync(filePath).isFile()) {
-								result.push({
-									source: filePath,
-									dest: path.join(latestDir, "plugins", pluginId, file),
-								});
-							}
-						}
-					}
-				}
-			}
-		}
-
-		if (this.settings.backupAppSettings) {
-			for (const f of CONFIG_FILES.appSettings) addConfigFile(f);
-		}
-
-		if (this.settings.backupBookmarks) {
-			for (const f of CONFIG_FILES.bookmarks) addConfigFile(f);
-		}
-
-		if (this.settings.backupGraph) {
-			for (const f of CONFIG_FILES.graph) addConfigFile(f);
-		}
-
-		return result;
-	}
-
-	private collectDirFiles(srcDir: string, destDir: string, result: Array<{ source: string; dest: string }>): void {
-		const entries = fs.readdirSync(srcDir);
-		for (const entry of entries) {
-			const srcPath = path.join(srcDir, entry);
-			if (fs.statSync(srcPath).isDirectory()) {
-				this.collectDirFiles(srcPath, path.join(destDir, entry), result);
-			} else if (fs.statSync(srcPath).isFile()) {
-				result.push({ source: srcPath, dest: path.join(destDir, entry) });
-			}
-		}
-	}
-
-	private buildMeta(backupFiles: Array<{ source: string; dest: string }>, configPath: string): BackupMeta {
+	private buildMeta(backupFiles: BackupFile[]): BackupMeta {
 		const now = new Date();
 		const fileHashes: Record<string, string> = {};
 		const pluginVersions: Record<string, string> = {};
+		const device = ensureDeviceIdentity(this.settings);
 
 		for (const file of backupFiles) {
 			const content = fs.readFileSync(file.source);
-			const relativePath = path.relative(configPath, file.source).replace(/\\/g, "/");
-			fileHashes[relativePath] = this.simpleHash(content.toString());
+			fileHashes[file.relativePath] = simpleHash(content.toString());
 
-			const match = relativePath.match(/^plugins\/([^/]+)\/manifest\.json$/);
+			const match = file.relativePath.match(/^plugins\/([^/]+)\/manifest\.json$/);
 			if (match) {
 				try {
 					const manifest = JSON.parse(content.toString());
@@ -235,17 +155,11 @@ export class BackupManager {
 			fileHashes,
 			changelog: [],
 			pluginVersions,
+			includedPluginIds: getIncludedPluginIds(backupFiles),
+			configDir: getConfigDirName(this.app),
+			deviceId: device.deviceId,
+			deviceName: device.deviceName,
 		};
-	}
-
-	private simpleHash(str: string): string {
-		let hash = 0;
-		for (let i = 0; i < str.length; i++) {
-			const char = str.charCodeAt(i);
-			hash = ((hash << 5) - hash) + char;
-			hash |= 0;
-		}
-		return hash.toString(16);
 	}
 
 	private async createSyncHistorySnapshot(
@@ -312,7 +226,15 @@ export class BackupManager {
 		const metaPath = path.join(syncDir, META_FILE_NAME);
 		if (!fs.existsSync(metaPath)) return null;
 		try {
-			return JSON.parse(fs.readFileSync(metaPath, "utf8"));
+			const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+			return {
+				...meta,
+				pluginVersions: meta.pluginVersions || {},
+				includedPluginIds: meta.includedPluginIds || Object.keys(meta.pluginVersions || {}),
+				configDir: meta.configDir || getConfigDirName(this.app),
+				deviceId: meta.deviceId || this.settings.deviceId || "unknown-device",
+				deviceName: meta.deviceName || this.settings.deviceName || "Unknown device",
+			};
 		} catch {
 			return null;
 		}
@@ -340,12 +262,20 @@ export class BackupManager {
 		if (!fs.existsSync(historyDir)) return [];
 
 		const entries = fs.readdirSync(historyDir).sort().reverse();
-		return entries.map((timestamp) => {
+		return entries.map((timestamp: string) => {
 			const metaPath = path.join(historyDir, timestamp, META_FILE_NAME);
 			let meta: BackupMeta | null = null;
 			try {
 				if (fs.existsSync(metaPath)) {
-					meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+					const parsed = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+					meta = {
+						...parsed,
+						pluginVersions: parsed.pluginVersions || {},
+						includedPluginIds: parsed.includedPluginIds || Object.keys(parsed.pluginVersions || {}),
+						configDir: parsed.configDir || getConfigDirName(this.app),
+						deviceId: parsed.deviceId || this.settings.deviceId || "unknown-device",
+						deviceName: parsed.deviceName || this.settings.deviceName || "Unknown device",
+					};
 				}
 			} catch {}
 
@@ -359,7 +289,7 @@ export class BackupManager {
 		if (!fs.existsSync(localDir)) return [];
 
 		const entries = fs.readdirSync(localDir).sort().reverse();
-		return entries.map((timestamp) => ({
+		return entries.map((timestamp: string) => ({
 			timestamp,
 			displayName: "Local: " + this.formatTimestamp(timestamp),
 		}));

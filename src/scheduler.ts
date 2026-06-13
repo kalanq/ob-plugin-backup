@@ -49,7 +49,11 @@ export class BackupScheduler {
 
 	configure(settings: AddonBackupSettings): void {
 		this.stopAutoBackup();
-		if (settings.autoBackupEnabled && settings.autoBackupIntervalMinutes > 0) {
+		if (
+			settings.firstBackupCompleted
+			&& settings.autoBackupEnabled
+			&& settings.autoBackupIntervalMinutes > 0
+		) {
 			this.startAutoBackup(settings.autoBackupIntervalMinutes);
 		}
 	}

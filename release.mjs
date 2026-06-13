@@ -14,7 +14,7 @@ execSync("node esbuild.config.mjs production", { cwd: ROOT, stdio: "inherit" });
 const manifest = JSON.parse(readFileSync(join(ROOT, "manifest.json"), "utf8"));
 const version = manifest.version;
 
-const files = ["main.js", "manifest.json", "styles.css"];
+const files = ["main.js", "manifest.json", "styles.css", "install-plugin.cmd", "install-plugin.ps1"];
 for (const f of files) {
     const src = join(ROOT, f);
     if (existsSync(src)) {
@@ -32,9 +32,15 @@ const readme = `# ob-plugin-backup v${version}
 Copy ALL files from this folder to your vault's:
 \`.obsidian/plugins/ob-plugin-backup/\`
 
+## Windows-only installer
+On Windows, you can double-click \`install-plugin.cmd\`.
+The installer copies only \`main.js\` and \`manifest.json\`; it does not copy \`data.json\`.
+
 ## Files
 - \`main.js\` - Plugin code
 - \`manifest.json\` - Plugin metadata (version: ${version})
+- \`install-plugin.cmd\` - Windows-only double-click installer
+- \`install-plugin.ps1\` - Windows-only installer script
 ${existsSync(join(ROOT, "styles.css")) ? "- `styles.css` - Plugin styles\n" : ""}
 ## Usage
 1. Open Obsidian Settings → Community Plugins

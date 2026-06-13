@@ -20,12 +20,19 @@ A lightweight plugin for backing up and syncing Obsidian configurations, plugins
 *   **Safe Incremental Restore**: Restoring will only overwrite configuration files included in the backup. It will **not** delete any new plugins you installed locally.
 *   **Automation**: Supports auto-backup on startup and scheduled interval backups.
 *   **Diff Checker**: Compare current local configurations with the latest backup in one click.
+*   **Device-aware Restore**: Backups are labeled by device, and restore previews are grouped by device and category.
+*   **Plugin Data Protection**: Excludes this plugin's own `data.json` by default to avoid overwriting per-device setup state.
+*   **Windows-only Installer**: Release packages include `install-plugin.cmd` and `install-plugin.ps1` for Windows double-click installation.
 
 ### Installation
 
 1.  Copy the compiled files (`main.js` and `manifest.json` from the `release/` folder) into your Obsidian vault's plugin directory:
     `.obsidian/plugins/ob-plugin-backup/`
 2.  Open Obsidian Settings → Community Plugins, and enable **Plugin Backup**.
+
+### Windows-only Installer
+
+On Windows, double-click `install-plugin.cmd` from the release folder and choose your Obsidian vault folder. The installer copies only `main.js` and `manifest.json`; it does not copy `data.json`.
 
 ### Usage Instructions
 
