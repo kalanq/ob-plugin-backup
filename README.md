@@ -23,6 +23,7 @@ A lightweight plugin for backing up and syncing Obsidian configurations, plugins
 *   **Device-aware Restore**: Backups are labeled by device, and restore previews are grouped by device and category.
 *   **Plugin Data Protection**: Excludes this plugin's own `data.json` by default to avoid overwriting per-device setup state.
 *   **Windows-only Installer**: Release packages include `install-plugin.cmd` and `install-plugin.ps1` for Windows double-click installation.
+*   **Standard Release Package**: GitHub releases include `ob-plugin-backup-vX.Y.Z.zip` with the plugin files and Windows-only installer.
 
 ### Installation
 

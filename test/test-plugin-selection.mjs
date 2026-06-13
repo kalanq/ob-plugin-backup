@@ -83,7 +83,7 @@ writeJson(path.join(config, "plugins", "plugin-b", "data.json"), { value: "b" })
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "manifest.json"), {
 	id: "ob-plugin-backup",
 	name: "Plugin Backup",
-	version: "0.1.2",
+	version: "0.1.3",
 });
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), { deviceName: "local" });
 writeText(path.join(config, "hotkeys.json"), "{}");

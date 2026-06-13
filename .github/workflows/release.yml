@@ -3,7 +3,7 @@ name: Build and Release Obsidian Plugin
 on:
   push:
     tags:
-      - '*' # Trigger on any tag push (e.g. 0.1.0)
+      - 'v*'
 
 permissions:
   contents: write
@@ -25,14 +25,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build plugin
-        run: npm run build
+      - name: Build and package release
+        run: node release.mjs
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            main.js
-            manifest.json
+            release/ob-plugin-backup-*.zip
+            release/main.js
+            release/manifest.json
+            release/install-plugin.cmd
+            release/install-plugin.ps1
+            release/README.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
