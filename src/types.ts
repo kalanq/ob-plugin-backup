@@ -1,4 +1,5 @@
 export interface AddonBackupSettings {
+	language: SupportedLanguage;
 	backupPath: string;
 	localSnapshotPath: string;
 	backupAppearance: boolean;
@@ -24,8 +25,10 @@ export interface AddonBackupSettings {
 }
 
 export type CommunityPluginSelectionMode = "all" | "selected";
+export type SupportedLanguage = "en" | "zh";
 
 export const DEFAULT_SETTINGS: AddonBackupSettings = {
+	language: "en",
 	backupPath: "meta",
 	localSnapshotPath: ".ob-plugin-backup-local",
 	backupAppearance: true,

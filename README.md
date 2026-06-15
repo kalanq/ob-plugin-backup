@@ -22,10 +22,21 @@ A lightweight plugin for backing up and syncing Obsidian configurations, plugins
 *   **Diff Checker**: Compare current local configurations with the latest backup in one click.
 *   **Device-aware Restore**: Backups are labeled by device, and restore previews are grouped by device and category.
 *   **Plugin Data Protection**: Excludes this plugin's own `data.json` by default to avoid overwriting per-device setup state.
-*   **Windows-only Installer**: Release packages include `install-plugin.cmd` and `install-plugin.ps1` for Windows double-click installation.
-*   **Standard Release Package**: GitHub releases include `ob-plugin-backup-vX.Y.Z.zip` with the plugin files and Windows-only installer.
+*   **Bilingual Settings UI**: Switch the settings page between English and Chinese.
+*   **Windows-only Installer**: Release assets include `install-plugin.cmd` and `install-plugin.ps1` for Windows double-click installation.
+*   **Release Assets**: GitHub releases upload the plugin files directly. GitHub's automatic source code archives are kept as source snapshots, not duplicated plugin packages.
 
 ### Installation
+
+#### Install with BRAT
+
+1.  Install and enable the Obsidian **BRAT** plugin.
+2.  Open the command palette and run **BRAT: Add a beta plugin for testing**.
+3.  Paste this repository URL:
+    `https://github.com/kalanq/ob-plugin-backup`
+4.  After BRAT installs the plugin, enable **Plugin Backup** in Obsidian Settings → Community Plugins.
+
+#### Manual Install
 
 1.  Copy the compiled files (`main.js` and `manifest.json` from the `release/` folder) into your Obsidian vault's plugin directory:
     `.obsidian/plugins/ob-plugin-backup/`
@@ -68,8 +79,23 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
 *   **增量覆盖恢复**：恢复过程只会覆盖备份中存在的文件，不会删除您本地后来安装的新插件。
 *   **自动与定时任务**：支持启动时自动备份、定时自动备份。
 *   **配置变更检测**：支持一键检查当前本地配置与备份配置的差异并输出差异日志。
+*   **设备感知恢复**：备份会记录设备名称，恢复预览可按设备和类别分组筛选。
+*   **插件自身数据保护**：默认排除本插件自己的 `data.json`，避免覆盖本机路径、设备名称和首次设置状态。
+*   **中英文设置界面**：可在插件设置页顶部切换 English / 中文。
+*   **仅 Windows 安装器**：发布资产包含 `install-plugin.cmd` 和 `install-plugin.ps1`，方便 Windows 双击安装。
+*   **发布资产规则**：GitHub Release 直接上传插件文件；GitHub 自动生成的源码压缩包仅作为源码快照，不再额外重复打包。
 
 ### 安装方法
+
+#### 使用 BRAT 安装
+
+1.  先在 Obsidian 中安装并启用 **BRAT** 插件。
+2.  打开命令面板，运行 **BRAT: Add a beta plugin for testing**。
+3.  粘贴本仓库地址：
+    `https://github.com/kalanq/ob-plugin-backup`
+4.  BRAT 安装完成后，在 Obsidian 设置 → 第三方插件中启用 **Plugin Backup**。
+
+#### 手动安装
 
 1.  将本项目编译生成的 `release/` 文件夹中的所有文件（`main.js`、`manifest.json`）复制到您 Obsidian 库的插件目录下：
     `.obsidian/plugins/ob-plugin-backup/`

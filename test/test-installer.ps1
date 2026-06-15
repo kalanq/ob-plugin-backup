@@ -28,8 +28,8 @@ try {
     }
 
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.version -ne "0.1.3") {
-        throw "Expected manifest version 0.1.3, got $($manifest.version)"
+    if ($manifest.version -ne "0.1.4") {
+        throw "Expected manifest version 0.1.4, got $($manifest.version)"
     }
 
     Write-Host "PASS: Windows-only installer installed main.js and manifest.json without overwriting data.json"

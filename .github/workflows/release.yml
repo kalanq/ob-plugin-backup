@@ -32,7 +32,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/ob-plugin-backup-*.zip
             release/main.js
             release/manifest.json
             release/install-plugin.cmd
