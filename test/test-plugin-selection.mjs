@@ -83,7 +83,7 @@ writeJson(path.join(config, "plugins", "plugin-b", "data.json"), { value: "b" })
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "manifest.json"), {
 	id: "ob-plugin-backup",
 	name: "Plugin Backup",
-	version: "0.1.4",
+	version: "0.1.5-beta",
 });
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), { deviceName: "local" });
 writeText(path.join(config, "hotkeys.json"), "{}");
@@ -97,6 +97,9 @@ const baseSettings = {
 	backupCommunityPlugins: true,
 	communityPluginSelectionMode: "all",
 	selectedCommunityPluginIds: [],
+	communityPluginDataMode: "all",
+	selectedCommunityPluginDataIds: [],
+	syncOwnPluginSettings: true,
 	backupOwnPluginData: false,
 	backupAppSettings: false,
 	backupBookmarks: false,
@@ -125,6 +128,7 @@ assert(allFiles.includes("plugins/plugin-a/data.json"), "all mode includes plugi
 assert(allFiles.includes("plugins/plugin-b/data.json"), "all mode includes plugin B");
 assert(allFiles.includes("plugins/ob-plugin-backup/manifest.json"), "all mode includes this plugin manifest");
 assert(!allFiles.includes("plugins/ob-plugin-backup/data.json"), "all mode excludes this plugin data.json by default");
+assert(allFiles.includes("plugins/ob-plugin-backup/synced-settings.json") === false, "collectBackupFiles does not read generated own settings file from config");
 assert(getIncludedPluginIds(allFiles).join(",") === "ob-plugin-backup,plugin-a,plugin-b", "included plugin ids list all plugins");
 
 const ownDataSettings = {
@@ -133,6 +137,25 @@ const ownDataSettings = {
 };
 const ownDataFiles = collectBackupFiles(config, latest, ownDataSettings).map((file) => file.relativePath);
 assert(ownDataFiles.includes("plugins/ob-plugin-backup/data.json"), "own plugin data is included when explicitly enabled");
+
+const noDataSettings = {
+	...baseSettings,
+	communityPluginDataMode: "none",
+};
+const noDataFiles = collectBackupFiles(config, latest, noDataSettings).map((file) => file.relativePath);
+assert(noDataFiles.includes("plugins/plugin-a/manifest.json"), "no data mode keeps plugin A manifest");
+assert(!noDataFiles.includes("plugins/plugin-a/data.json"), "no data mode excludes plugin A data");
+assert(!noDataFiles.includes("plugins/plugin-b/data.json"), "no data mode excludes plugin B data");
+
+const selectedDataSettings = {
+	...baseSettings,
+	communityPluginDataMode: "selected",
+	selectedCommunityPluginDataIds: ["plugin-a"],
+};
+const selectedDataFiles = collectBackupFiles(config, latest, selectedDataSettings).map((file) => file.relativePath);
+assert(selectedDataFiles.includes("plugins/plugin-a/data.json"), "selected data mode includes chosen plugin data");
+assert(selectedDataFiles.includes("plugins/plugin-b/manifest.json"), "selected data mode keeps unchosen plugin manifest");
+assert(!selectedDataFiles.includes("plugins/plugin-b/data.json"), "selected data mode excludes unchosen plugin data");
 
 const selectedSettings = {
 	...baseSettings,
@@ -170,6 +193,7 @@ assert(meta.configDir === ".obsidian", "meta records config directory");
 assert(meta.deviceId === "device-a", "meta records device id");
 assert(meta.deviceName === "Device A", "meta records device name");
 assert(meta.includedPluginIds.join(",") === "plugin-a", "meta records selected plugin ids");
+assert(fs.existsSync(path.join(latest, "plugins", "ob-plugin-backup", "synced-settings.json")), "BackupManager writes safe own plugin settings snapshot");
 assert(fs.existsSync(path.join(latest, "plugins", "plugin-a", "manifest.json")), "BackupManager latest contains selected plugin");
 assert(!fs.existsSync(path.join(latest, "plugins", "plugin-b", "manifest.json")), "BackupManager latest excludes unselected plugin");
 

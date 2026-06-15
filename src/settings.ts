@@ -26,6 +26,14 @@ type TranslationKey =
 	| "communityPluginSyncModeDesc"
 	| "allCommunityPlugins"
 	| "onlySelectedPlugins"
+	| "communityPluginDataMode"
+	| "communityPluginDataModeDesc"
+	| "allPluginData"
+	| "noPluginData"
+	| "selectedPluginData"
+	| "doNotSyncPlugin"
+	| "syncPluginFilesOnly"
+	| "syncPluginFilesAndData"
 	| "detectedPlugins"
 	| "detectedPluginsDesc"
 	| "selectAllPlugins"
@@ -34,6 +42,8 @@ type TranslationKey =
 	| "disabled"
 	| "version"
 	| "advancedOptions"
+	| "syncOwnSettings"
+	| "syncOwnSettingsDesc"
 	| "includeOwnData"
 	| "includeOwnDataDesc"
 	| "automaticBackup"
@@ -90,6 +100,14 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		communityPluginSyncModeDesc: "All plugins keeps the current behavior. Selected plugins limits plugin folders in the backup.",
 		allCommunityPlugins: "All community plugins",
 		onlySelectedPlugins: "Only selected plugins",
+		communityPluginDataMode: "Plugin data sync mode",
+		communityPluginDataModeDesc: "Controls data.json files separately from plugin code and manifest files.",
+		allPluginData: "Sync all plugin data",
+		noPluginData: "Do not sync plugin data",
+		selectedPluginData: "Choose per plugin",
+		doNotSyncPlugin: "Do not sync this plugin",
+		syncPluginFilesOnly: "Sync plugin files only",
+		syncPluginFilesAndData: "Sync plugin files and data",
 		detectedPlugins: "Detected plugins",
 		detectedPluginsDesc: "{count} community plugins will be included.",
 		selectAllPlugins: "Select all plugins",
@@ -98,8 +116,10 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		disabled: "Disabled",
 		version: "version",
 		advancedOptions: "Advanced Options",
-		includeOwnData: "Include Plugin Backup settings data",
-		includeOwnDataDesc: "Default off. When off, plugins/ob-plugin-backup/data.json is excluded so synced backups do not overwrite this device's paths, device name, and first-run state.",
+		syncOwnSettings: "Sync Plugin Backup settings",
+		syncOwnSettingsDesc: "Default on. Syncs safe Plugin Backup options through synced-settings.json without overwriting device name, local paths, first-run state, history, or sync records.",
+		includeOwnData: "Include raw Plugin Backup data.json",
+		includeOwnDataDesc: "Advanced and off by default. When off, plugins/ob-plugin-backup/data.json is excluded so synced backups do not overwrite this device's local state.",
 		automaticBackup: "Automatic Backup",
 		enableAutoBackup: "Enable auto backup",
 		enableAutoBackupDesc: "Automatically create backups at regular intervals",
@@ -153,6 +173,14 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		communityPluginSyncModeDesc: "全部插件保持现有行为；仅选中插件会限制备份中的插件文件夹。",
 		allCommunityPlugins: "全部社区插件",
 		onlySelectedPlugins: "仅选中的插件",
+		communityPluginDataMode: "插件数据同步模式",
+		communityPluginDataModeDesc: "将 data.json 插件数据与插件本体、manifest 文件分开控制。",
+		allPluginData: "同步全部插件数据",
+		noPluginData: "不同步插件数据",
+		selectedPluginData: "按插件选择",
+		doNotSyncPlugin: "不同步此插件",
+		syncPluginFilesOnly: "只同步插件本体和版本",
+		syncPluginFilesAndData: "同步插件本体和数据",
 		detectedPlugins: "检测到的插件",
 		detectedPluginsDesc: "将包含 {count} 个社区插件。",
 		selectAllPlugins: "选择全部插件",
@@ -161,8 +189,10 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		disabled: "未启用",
 		version: "版本",
 		advancedOptions: "高级选项",
-		includeOwnData: "包含 Plugin Backup 自身设置数据",
-		includeOwnDataDesc: "默认关闭。关闭时会排除 plugins/ob-plugin-backup/data.json，避免同步备份覆盖本机路径、设备名和首次设置状态。",
+		syncOwnSettings: "同步 Plugin Backup 设置",
+		syncOwnSettingsDesc: "默认开启。通过 synced-settings.json 同步安全的插件设置项，不覆盖设备名、本地路径、首次设置状态、历史记录或同步记录。",
+		includeOwnData: "包含原始 Plugin Backup data.json",
+		includeOwnDataDesc: "高级选项，默认关闭。关闭时会排除 plugins/ob-plugin-backup/data.json，避免同步备份覆盖本机本地状态。",
 		automaticBackup: "自动备份",
 		enableAutoBackup: "启用自动备份",
 		enableAutoBackupDesc: "按固定时间间隔自动创建备份。",
@@ -383,6 +413,18 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 
 	private renderAdvancedOptions(containerEl: HTMLElement): void {
 		new Setting(containerEl)
+			.setName(this.t("syncOwnSettings"))
+			.setDesc(this.t("syncOwnSettingsDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.settings.syncOwnPluginSettings)
+					.onChange(async (value) => {
+						this.settings.syncOwnPluginSettings = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName(this.t("includeOwnData"))
 			.setDesc(this.t("includeOwnDataDesc"))
 			.addToggle((toggle) =>
@@ -563,6 +605,7 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 	private renderCommunityPluginSelection(containerEl: HTMLElement): void {
 		const installedPlugins = getInstalledCommunityPlugins(getConfigPath(this.app));
 		const selected = new Set(this.settings.selectedCommunityPluginIds);
+		const selectedData = new Set(this.settings.selectedCommunityPluginDataIds || []);
 
 		new Setting(containerEl)
 			.setName(this.t("communityPluginSyncMode"))
@@ -583,7 +626,30 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 					});
 			});
 
-		if (this.settings.communityPluginSelectionMode !== "selected") {
+		new Setting(containerEl)
+			.setName(this.t("communityPluginDataMode"))
+			.setDesc(this.t("communityPluginDataModeDesc"))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption("all", this.t("allPluginData"))
+					.addOption("none", this.t("noPluginData"))
+					.addOption("selected", this.t("selectedPluginData"))
+					.setValue(this.settings.communityPluginDataMode || "all")
+					.onChange(async (value) => {
+						const mode = value as "all" | "none" | "selected";
+						this.settings.communityPluginDataMode = mode;
+						if (mode === "selected" && this.settings.selectedCommunityPluginDataIds.length === 0) {
+							this.settings.selectedCommunityPluginDataIds = installedPlugins.map((plugin) => plugin.id);
+						}
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			});
+
+		const showPluginRows = this.settings.communityPluginSelectionMode === "selected"
+			|| this.settings.communityPluginDataMode === "selected";
+
+		if (!showPluginRows) {
 			new Setting(containerEl)
 				.setName(this.t("detectedPlugins"))
 				.setDesc(this.t("detectedPluginsDesc").replace("{count}", String(installedPlugins.length)));
@@ -598,25 +664,62 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 					.setButtonText(this.t("selectAllPlugins"))
 					.onClick(async () => {
 						this.settings.selectedCommunityPluginIds = installedPlugins.map((plugin) => plugin.id);
+						if (this.settings.communityPluginDataMode === "selected") {
+							this.settings.selectedCommunityPluginDataIds = installedPlugins.map((plugin) => plugin.id);
+						}
 						await this.plugin.saveSettings();
 						this.display();
 					})
 			);
 
 		for (const plugin of installedPlugins) {
+			const pluginSelected = this.settings.communityPluginSelectionMode === "selected"
+				? selected.has(plugin.id)
+				: true;
+			const dataSelected = this.settings.communityPluginDataMode === "selected"
+				? selectedData.has(plugin.id)
+				: this.settings.communityPluginDataMode !== "none";
+			const value = !pluginSelected ? "none" : dataSelected ? "full" : "files";
+
 			new Setting(containerEl)
 				.setName(`${plugin.name} (${plugin.id})`)
 				.setDesc(`${plugin.enabled ? this.t("enabled") : this.t("disabled")} - ${this.t("version")} ${plugin.version}`)
-				.addToggle((toggle) =>
-					toggle
-						.setValue(selected.has(plugin.id))
-						.onChange(async (value) => {
-							if (value) selected.add(plugin.id);
-							else selected.delete(plugin.id);
-							this.settings.selectedCommunityPluginIds = Array.from(selected).sort();
+				.addDropdown((dropdown) => {
+					if (this.settings.communityPluginSelectionMode === "selected") {
+						dropdown.addOption("none", this.t("doNotSyncPlugin"));
+					}
+					dropdown
+						.addOption("files", this.t("syncPluginFilesOnly"))
+						.addOption("full", this.t("syncPluginFilesAndData"))
+						.setValue(value)
+						.onChange(async (newValue) => {
+							if (newValue !== "none" && this.settings.communityPluginDataMode !== "selected") {
+								if (this.settings.communityPluginDataMode === "all") {
+									for (const installedPlugin of installedPlugins) selectedData.add(installedPlugin.id);
+								} else {
+									selectedData.clear();
+								}
+								this.settings.communityPluginDataMode = "selected";
+							}
+
+							if (newValue === "none") {
+								selected.delete(plugin.id);
+								selectedData.delete(plugin.id);
+							} else {
+								selected.add(plugin.id);
+								if (newValue === "full") selectedData.add(plugin.id);
+								else selectedData.delete(plugin.id);
+							}
+
+							if (this.settings.communityPluginSelectionMode === "selected") {
+								this.settings.selectedCommunityPluginIds = Array.from(selected).sort();
+							}
+							if (this.settings.communityPluginDataMode === "selected") {
+								this.settings.selectedCommunityPluginDataIds = Array.from(selectedData).sort();
+							}
 							await this.plugin.saveSettings();
-						})
-				);
+						});
+				});
 		}
 	}
 }

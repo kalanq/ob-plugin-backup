@@ -1,5 +1,6 @@
 import type { AddonBackupSettings, BackupFile, InstalledCommunityPlugin } from "./types";
 import { CONFIG_FILES } from "./constants";
+import { OWN_PLUGIN_DATA_PATH, OWN_PLUGIN_ID, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
 
 const fs = require("fs");
 const path = require("path");
@@ -50,16 +51,26 @@ export function shouldIncludeCommunityPlugin(
 	return settings.selectedCommunityPluginIds.includes(pluginId);
 }
 
+export function shouldIncludeCommunityPluginData(
+	settings: AddonBackupSettings,
+	pluginId: string,
+): boolean {
+	const mode = settings.communityPluginDataMode || "all";
+	if (mode === "none") return false;
+	if (mode === "selected") return settings.selectedCommunityPluginDataIds.includes(pluginId);
+	return true;
+}
+
 function shouldSkipPluginFile(
 	settings: AddonBackupSettings,
 	pluginId: string,
 	relativePath: string,
 ): boolean {
-	return (
-		pluginId === "ob-plugin-backup"
-		&& relativePath === "plugins/ob-plugin-backup/data.json"
-		&& !settings.backupOwnPluginData
-	);
+	if (relativePath === OWN_PLUGIN_SETTINGS_SYNC_PATH) return true;
+	if (pluginId === OWN_PLUGIN_ID && relativePath === OWN_PLUGIN_DATA_PATH) {
+		return !settings.backupOwnPluginData;
+	}
+	return relativePath.endsWith("/data.json") && !shouldIncludeCommunityPluginData(settings, pluginId);
 }
 
 export function collectBackupFiles(
@@ -148,6 +159,7 @@ export function getIncludedPluginIds(files: BackupFile[] | string[]): string[] {
 	const ids = new Set<string>();
 	for (const file of files) {
 		const relativePath = typeof file === "string" ? file : file.relativePath;
+		if (relativePath === OWN_PLUGIN_SETTINGS_SYNC_PATH) continue;
 		const match = relativePath.match(/^plugins\/([^/]+)\//);
 		if (match) ids.add(match[1]);
 	}

@@ -8,6 +8,9 @@ export interface AddonBackupSettings {
 	backupCommunityPlugins: boolean;
 	communityPluginSelectionMode: CommunityPluginSelectionMode;
 	selectedCommunityPluginIds: string[];
+	communityPluginDataMode: CommunityPluginDataMode;
+	selectedCommunityPluginDataIds: string[];
+	syncOwnPluginSettings: boolean;
 	backupOwnPluginData: boolean;
 	backupAppSettings: boolean;
 	backupBookmarks: boolean;
@@ -25,6 +28,7 @@ export interface AddonBackupSettings {
 }
 
 export type CommunityPluginSelectionMode = "all" | "selected";
+export type CommunityPluginDataMode = "all" | "none" | "selected";
 export type SupportedLanguage = "en" | "zh";
 
 export const DEFAULT_SETTINGS: AddonBackupSettings = {
@@ -37,6 +41,9 @@ export const DEFAULT_SETTINGS: AddonBackupSettings = {
 	backupCommunityPlugins: true,
 	communityPluginSelectionMode: "all",
 	selectedCommunityPluginIds: [],
+	communityPluginDataMode: "all",
+	selectedCommunityPluginDataIds: [],
+	syncOwnPluginSettings: true,
 	backupOwnPluginData: false,
 	backupAppSettings: true,
 	backupBookmarks: true,

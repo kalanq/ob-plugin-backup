@@ -20,7 +20,7 @@ export const BACKUP_CATEGORIES: BackupCategory[] = [
 	{ key: "backupAppearance", label: "Appearance & Theme", description: "appearance.json, themes/, snippets/" },
 	{ key: "backupHotkeys", label: "Custom Hotkeys", description: "hotkeys.json" },
 	{ key: "backupCorePlugins", label: "Core Plugins", description: "core-plugins.json" },
-	{ key: "backupCommunityPlugins", label: "Community Plugins", description: "community-plugins.json, all plugin files (main.js, manifest.json, data.json)" },
+	{ key: "backupCommunityPlugins", label: "Community Plugins", description: "community-plugins.json and selected plugin files; data.json is controlled separately" },
 	{ key: "backupAppSettings", label: "App Settings", description: "app.json (editor, links, files)" },
 	{ key: "backupBookmarks", label: "Bookmarks", description: "bookmarks.json" },
 	{ key: "backupGraph", label: "Graph Settings", description: "graph.json" },

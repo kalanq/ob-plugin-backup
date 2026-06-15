@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { getIncludedPluginIds, readJsonFile, toVaultRelative } from "./file_utils";
 import { META_FILE_NAME } from "./constants";
+import { applyOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
 
 const fs = require("fs");
 const path = require("path");
@@ -189,6 +190,10 @@ export function copySelectedRestoreFiles(
 		const srcPath = path.join(backupPath, relativePath);
 		const destPath = path.join(configPath, relativePath);
 		if (!fs.existsSync(srcPath) || !fs.statSync(srcPath).isFile()) continue;
+		if (relativePath === OWN_PLUGIN_SETTINGS_SYNC_PATH) {
+			applyOwnPluginSettingsSnapshot(configPath, srcPath);
+			continue;
+		}
 		fs.mkdirSync(path.dirname(destPath), { recursive: true });
 		fs.copyFileSync(srcPath, destPath);
 	}

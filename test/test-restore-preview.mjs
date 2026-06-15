@@ -55,6 +55,15 @@ writeJson(path.join(config, "plugins", "plugin-a", "manifest.json"), {
 	version: "1.0.0",
 });
 writeJson(path.join(config, "plugins", "plugin-a", "data.json"), { value: "local-plugin" });
+writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), {
+	backupPath: "local-meta",
+	localSnapshotPath: ".local-only",
+	deviceName: "Local Device",
+	backupAppearance: false,
+	syncHistoryRetentionCount: 3,
+	historyRecords: ["keep-me"],
+	lastSyncTime: "local-only",
+});
 
 writeJson(path.join(backup, "app.json"), { value: "backup-app" });
 writeJson(path.join(backup, "hotkeys.json"), { value: "backup-hotkeys" });
@@ -64,6 +73,19 @@ writeJson(path.join(backup, "plugins", "plugin-a", "manifest.json"), {
 	version: "2.0.0",
 });
 writeJson(path.join(backup, "plugins", "plugin-a", "data.json"), { value: "backup-plugin" });
+writeJson(path.join(backup, "plugins", "ob-plugin-backup", "synced-settings.json"), {
+	version: 1,
+	syncedAt: new Date().toISOString(),
+	settings: {
+		language: "zh",
+		backupPath: "remote-meta",
+		localSnapshotPath: ".remote-local",
+		deviceName: "Remote Device",
+		backupAppearance: true,
+		syncHistoryRetentionCount: 20,
+		historyRecords: ["do-not-merge"],
+	},
+});
 writeJson(path.join(backup, "meta.json"), {
 	version: "1.0.0",
 	lastBackupTime: Date.now(),
@@ -98,6 +120,18 @@ assert(readJson(path.join(config, "app.json")).value === "backup-app", "selected
 assert(readJson(path.join(config, "plugins", "plugin-a", "data.json")).value === "backup-plugin", "selected plugin data restored");
 assert(readJson(path.join(config, "hotkeys.json")).value === "local-hotkeys", "unselected file remains local");
 assert(readJson(path.join(config, "plugins", "plugin-a", "manifest.json")).version === "1.0.0", "unselected plugin manifest remains local");
+
+console.log("\n=== Safe own plugin settings restore ===");
+copySelectedRestoreFiles(backup, config, ["plugins/ob-plugin-backup/synced-settings.json"]);
+const ownData = readJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"));
+assert(ownData.language === "zh", "safe own settings restore applies whitelisted setting");
+assert(ownData.backupAppearance === true, "safe own settings restore updates backup options");
+assert(ownData.syncHistoryRetentionCount === 20, "safe own settings restore updates retention options");
+assert(ownData.backupPath === "local-meta", "safe own settings restore preserves local backup path");
+assert(ownData.localSnapshotPath === ".local-only", "safe own settings restore preserves local snapshot path");
+assert(ownData.deviceName === "Local Device", "safe own settings restore preserves device name");
+assert(Array.isArray(ownData.historyRecords) && ownData.historyRecords[0] === "keep-me", "safe own settings restore preserves local history records");
+assert(ownData.lastSyncTime === "local-only", "safe own settings restore preserves local sync records");
 
 console.log("\n" + "=".repeat(50));
 console.log(`Results: ${passed} passed, ${failed} failed`);

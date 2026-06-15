@@ -10,6 +10,7 @@ import {
 import { getConfigDirName, getConfigPath, getVaultPath, resolveVaultPath } from "./path_utils";
 import { collectBackupFiles, getIncludedPluginIds, simpleHash } from "./file_utils";
 import { ensureDeviceIdentity } from "./device_utils";
+import { buildOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
 
 const fs = require("fs");
 const path = require("path");
@@ -71,6 +72,10 @@ export class BackupManager {
 		for (const file of backupFiles) {
 			fs.mkdirSync(path.dirname(file.dest), { recursive: true });
 			fs.copyFileSync(file.source, file.dest);
+		}
+
+		if (this.settings.syncOwnPluginSettings) {
+			backupFiles.push(this.writeOwnPluginSettingsSnapshot(tempLatestDir));
 		}
 
 		const meta = this.buildMeta(backupFiles);
@@ -160,6 +165,17 @@ export class BackupManager {
 			deviceId: device.deviceId,
 			deviceName: device.deviceName,
 		};
+	}
+
+	private writeOwnPluginSettingsSnapshot(destRoot: string): BackupFile {
+		const relativePath = OWN_PLUGIN_SETTINGS_SYNC_PATH;
+		const dest = path.join(destRoot, relativePath);
+		fs.mkdirSync(path.dirname(dest), { recursive: true });
+		fs.writeFileSync(
+			dest,
+			JSON.stringify(buildOwnPluginSettingsSnapshot(this.settings), null, 2),
+		);
+		return { source: dest, dest, relativePath };
 	}
 
 	private async createSyncHistorySnapshot(
