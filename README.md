@@ -17,6 +17,7 @@ A lightweight plugin for backing up and syncing Obsidian configurations, plugins
     *   `ob-plugin-backup/`: Sync directory (visible to NAS for multi-device syncing).
     *   `.ob-plugin-backup-local/`: Dot-prefixed local backup directory (ignored by NAS, used for local emergency recovery).
 *   **Version History**: Customize retention counts for versioned snapshots.
+*   **Failed Backup Cleanup**: Stale `latest.tmp-*` folders from interrupted backups are removed automatically on later backup runs.
 *   **Safe Incremental Restore**: Restoring will only overwrite configuration files included in the backup. It will **not** delete any new plugins you installed locally.
 *   **Automation**: Supports auto-backup on startup and scheduled interval backups.
 *   **Diff Checker**: Compare current local configurations with the latest backup in one click.
@@ -77,6 +78,7 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
     *   `ob-plugin-backup/`：同步目录（NAS可见并进行多端同步）。
     *   `.ob-plugin-backup-local/`：以 `.` 开头的本地安全快照目录（NAS会自动跳过，用于发生意外时在本地还原历史）。
 *   **版本历史与保留**：支持自定义历史版本保留数量，可从任意历史节点恢复。
+*   **失败备份清理**：中断备份留下的旧 `latest.tmp-*` 临时目录会在后续备份时自动清理。
 *   **增量覆盖恢复**：恢复过程只会覆盖备份中存在的文件，不会删除您本地后来安装的新插件。
 *   **自动与定时任务**：支持启动时自动备份、定时自动备份。
 *   **配置变更检测**：支持一键检查当前本地配置与备份配置的差异并输出差异日志。

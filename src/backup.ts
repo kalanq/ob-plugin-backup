@@ -15,6 +15,8 @@ import { buildOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from ".
 const fs = require("fs");
 const path = require("path");
 
+const STALE_LATEST_TEMP_MAX_AGE_MS = 60 * 60 * 1000;
+
 export class BackupManager {
 	private app: App;
 	private settings: AddonBackupSettings;
@@ -62,56 +64,62 @@ export class BackupManager {
 		const previousMeta = await this.readMeta();
 		const changes: string[] = [];
 
-		if (fs.existsSync(tempLatestDir)) {
-			fs.rmSync(tempLatestDir, { recursive: true, force: true });
-		}
-		fs.mkdirSync(tempLatestDir, { recursive: true });
+		this.cleanStaleLatestTempDirs(syncDir);
 
-		const backupFiles = collectBackupFiles(configPath, tempLatestDir, this.settings);
-
-		for (const file of backupFiles) {
-			fs.mkdirSync(path.dirname(file.dest), { recursive: true });
-			fs.copyFileSync(file.source, file.dest);
-		}
-
-		if (this.settings.syncOwnPluginSettings) {
-			backupFiles.push(this.writeOwnPluginSettingsSnapshot(tempLatestDir));
-		}
-
-		const meta = this.buildMeta(backupFiles);
-
-		if (previousMeta) {
-			const detectedChanges = this.detectChanges(previousMeta.fileHashes, meta.fileHashes);
-			for (const change of detectedChanges) {
-				const prefix = change.type === "added" ? "+" : change.type === "deleted" ? "-" : "~";
-				changes.push(`${prefix} ${change.relativePath}`);
+		try {
+			if (fs.existsSync(tempLatestDir)) {
+				fs.rmSync(tempLatestDir, { recursive: true, force: true });
 			}
-		} else {
-			changes.push("+ Initial backup");
+			fs.mkdirSync(tempLatestDir, { recursive: true });
+
+			const backupFiles = collectBackupFiles(configPath, tempLatestDir, this.settings);
+
+			for (const file of backupFiles) {
+				fs.mkdirSync(path.dirname(file.dest), { recursive: true });
+				fs.copyFileSync(file.source, file.dest);
+			}
+
+			if (this.settings.syncOwnPluginSettings) {
+				backupFiles.push(this.writeOwnPluginSettingsSnapshot(tempLatestDir));
+			}
+
+			const meta = this.buildMeta(backupFiles);
+
+			if (previousMeta) {
+				const detectedChanges = this.detectChanges(previousMeta.fileHashes, meta.fileHashes);
+				for (const change of detectedChanges) {
+					const prefix = change.type === "added" ? "+" : change.type === "deleted" ? "-" : "~";
+					changes.push(`${prefix} ${change.relativePath}`);
+				}
+			} else {
+				changes.push("+ Initial backup");
+			}
+
+			meta.changelog = changes;
+
+			const now = new Date();
+			const timestamp = now.toISOString().replace(/[:.]/g, "-");
+			await this.createSyncHistorySnapshot(syncDir, tempLatestDir, timestamp, meta);
+			await this.createLocalSnapshot(configPath, timestamp, meta);
+
+			fs.mkdirSync(syncDir, { recursive: true });
+			this.replaceLatestDir(syncDir, latestDir, tempLatestDir);
+			fs.writeFileSync(path.join(syncDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
+
+			this.cleanHistory(
+				path.join(syncDir, HISTORY_DIR_NAME),
+				this.settings.syncHistoryRetentionCount,
+			);
+			this.cleanHistory(
+				this.getLocalSnapshotDir(),
+				this.settings.localSnapshotRetentionCount,
+			);
+		} catch (err) {
+			if (fs.existsSync(tempLatestDir)) {
+				fs.rmSync(tempLatestDir, { recursive: true, force: true });
+			}
+			throw err;
 		}
-
-		meta.changelog = changes;
-
-		const now = new Date();
-		const timestamp = now.toISOString().replace(/[:.]/g, "-");
-		await this.createSyncHistorySnapshot(syncDir, tempLatestDir, timestamp, meta);
-		await this.createLocalSnapshot(configPath, timestamp, meta);
-
-		fs.mkdirSync(syncDir, { recursive: true });
-		if (fs.existsSync(latestDir)) {
-			fs.rmSync(latestDir, { recursive: true, force: true });
-		}
-		fs.renameSync(tempLatestDir, latestDir);
-		fs.writeFileSync(path.join(syncDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
-
-		this.cleanHistory(
-			path.join(syncDir, HISTORY_DIR_NAME),
-			this.settings.syncHistoryRetentionCount,
-		);
-		this.cleanHistory(
-			this.getLocalSnapshotDir(),
-			this.settings.localSnapshotRetentionCount,
-		);
 	}
 
 	private detectChanges(
@@ -232,6 +240,46 @@ export class BackupManager {
 			const oldest = entries.shift();
 			if (oldest) {
 				fs.rmSync(path.join(historyDir, oldest), { recursive: true, force: true });
+			}
+		}
+	}
+
+	private replaceLatestDir(syncDir: string, latestDir: string, tempLatestDir: string): void {
+		const previousLatestDir = path.join(syncDir, `${LATEST_DIR_NAME}.previous-${Date.now()}`);
+		let movedPreviousLatest = false;
+
+		try {
+			if (fs.existsSync(previousLatestDir)) {
+				fs.rmSync(previousLatestDir, { recursive: true, force: true });
+			}
+			if (fs.existsSync(latestDir)) {
+				fs.renameSync(latestDir, previousLatestDir);
+				movedPreviousLatest = true;
+			}
+			fs.renameSync(tempLatestDir, latestDir);
+			if (movedPreviousLatest && fs.existsSync(previousLatestDir)) {
+				fs.rmSync(previousLatestDir, { recursive: true, force: true });
+			}
+		} catch (err) {
+			if (!fs.existsSync(latestDir) && movedPreviousLatest && fs.existsSync(previousLatestDir)) {
+				try {
+					fs.renameSync(previousLatestDir, latestDir);
+				} catch {}
+			}
+			throw err;
+		}
+	}
+
+	private cleanStaleLatestTempDirs(syncDir: string): void {
+		if (!fs.existsSync(syncDir)) return;
+		const now = Date.now();
+		const entries = fs.readdirSync(syncDir, { withFileTypes: true });
+		for (const entry of entries) {
+			if (!entry.isDirectory() || !entry.name.startsWith(`${LATEST_DIR_NAME}.tmp-`)) continue;
+			const fullPath = path.join(syncDir, entry.name);
+			const stat = fs.statSync(fullPath);
+			if (now - stat.mtimeMs >= STALE_LATEST_TEMP_MAX_AGE_MS) {
+				fs.rmSync(fullPath, { recursive: true, force: true });
 			}
 		}
 	}

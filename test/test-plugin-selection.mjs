@@ -187,12 +187,18 @@ const app = {
 	},
 };
 const manager = new BackupManager(app, selectedSettings);
+const staleTempDir = path.join(vault, "meta", "ob-plugin-backup", "latest.tmp-stale");
+fs.mkdirSync(staleTempDir, { recursive: true });
+writeText(path.join(staleTempDir, "stale.txt"), "stale");
+const oldDate = new Date(Date.now() - 2 * 60 * 60 * 1000);
+fs.utimesSync(staleTempDir, oldDate, oldDate);
 await manager.createBackup();
 const meta = JSON.parse(fs.readFileSync(path.join(vault, "meta", "ob-plugin-backup", "meta.json"), "utf8"));
 assert(meta.configDir === ".obsidian", "meta records config directory");
 assert(meta.deviceId === "device-a", "meta records device id");
 assert(meta.deviceName === "Device A", "meta records device name");
 assert(meta.includedPluginIds.join(",") === "plugin-a", "meta records selected plugin ids");
+assert(!fs.existsSync(staleTempDir), "BackupManager removes stale latest temp folders");
 assert(fs.existsSync(path.join(latest, "plugins", "ob-plugin-backup", "synced-settings.json")), "BackupManager writes safe own plugin settings snapshot");
 assert(fs.existsSync(path.join(latest, "plugins", "plugin-a", "manifest.json")), "BackupManager latest contains selected plugin");
 assert(!fs.existsSync(path.join(latest, "plugins", "plugin-b", "manifest.json")), "BackupManager latest excludes unselected plugin");
