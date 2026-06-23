@@ -26,6 +26,11 @@ function writeJson(filePath, data) {
 	fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
+function writeText(filePath, text) {
+	fs.mkdirSync(path.dirname(filePath), { recursive: true });
+	fs.writeFileSync(filePath, text, "utf8");
+}
+
 function readJson(filePath) {
 	return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
@@ -73,6 +78,10 @@ writeJson(path.join(backup, "plugins", "plugin-a", "manifest.json"), {
 	version: "2.0.0",
 });
 writeJson(path.join(backup, "plugins", "plugin-a", "data.json"), { value: "backup-plugin" });
+writeText(path.join(backup, "index.html"), "<html><body>runtime entry</body></html>");
+writeText(path.join(backup, "copilot-index-abc123.json"), "{\"cache\":true}");
+writeText(path.join(backup, "plugins", "plugin-a", "index.html"), "<html><body>plugin asset</body></html>");
+writeText(path.join(OUT_DIR, "escape.txt"), "outside");
 writeJson(path.join(backup, "plugins", "ob-plugin-backup", "synced-settings.json"), {
 	version: 1,
 	syncedAt: new Date().toISOString(),
@@ -103,6 +112,9 @@ console.log("=== Restore preview ===");
 const preview = createRestorePreview(backup, config, ".obsidian", null, "device-a", "Device A");
 assert(preview.files.includes("app.json"), "preview includes app.json");
 assert(preview.files.includes("plugins/plugin-a/data.json"), "preview includes plugin data");
+assert(!preview.files.includes("index.html"), "preview excludes root HTML runtime files");
+assert(!preview.files.includes("copilot-index-abc123.json"), "preview excludes generated root index cache files");
+assert(preview.files.includes("plugins/plugin-a/index.html"), "preview keeps plugin asset HTML files");
 assert(preview.pluginIds.join(",") === "plugin-a", "preview lists plugin id");
 assert(preview.pluginVersionDiffs[0].status === "different", "preview detects version difference");
 assert(preview.pluginVersionDiffs[0].backupVersion === "2.0.0", "preview reads backup plugin version");
@@ -115,11 +127,14 @@ assert(preview.groups[0].categories.some((group) => group.key === "appSettings")
 assert(preview.groups[0].categories.some((group) => group.key === "hotkeys"), "preview groups hotkey files");
 
 console.log("\n=== Selective restore ===");
-copySelectedRestoreFiles(backup, config, ["app.json", "plugins/plugin-a/data.json"]);
+copySelectedRestoreFiles(backup, config, ["app.json", "plugins/plugin-a/data.json", "index.html", "copilot-index-abc123.json", "../escape.txt"]);
 assert(readJson(path.join(config, "app.json")).value === "backup-app", "selected config file restored");
 assert(readJson(path.join(config, "plugins", "plugin-a", "data.json")).value === "backup-plugin", "selected plugin data restored");
 assert(readJson(path.join(config, "hotkeys.json")).value === "local-hotkeys", "unselected file remains local");
 assert(readJson(path.join(config, "plugins", "plugin-a", "manifest.json")).version === "1.0.0", "unselected plugin manifest remains local");
+assert(!fs.existsSync(path.join(config, "index.html")), "restore skips root HTML runtime files");
+assert(!fs.existsSync(path.join(config, "copilot-index-abc123.json")), "restore skips generated root index cache files");
+assert(!fs.existsSync(path.join(OUT_DIR, "vault", "escape.txt")), "restore blocks parent-directory traversal");
 
 console.log("\n=== Safe own plugin settings restore ===");
 copySelectedRestoreFiles(backup, config, ["plugins/ob-plugin-backup/synced-settings.json"]);

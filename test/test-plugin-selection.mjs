@@ -87,6 +87,8 @@ writeJson(path.join(config, "plugins", "ob-plugin-backup", "manifest.json"), {
 });
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), { deviceName: "local" });
 writeText(path.join(config, "hotkeys.json"), "{}");
+writeText(path.join(config, "index.html"), "<html><body>runtime entry</body></html>");
+writeText(path.join(config, "copilot-index-abc123.json"), "{\"cache\":true}");
 
 const baseSettings = {
 	backupPath: "meta",
@@ -202,6 +204,11 @@ assert(!fs.existsSync(staleTempDir), "BackupManager removes stale latest temp fo
 assert(fs.existsSync(path.join(latest, "plugins", "ob-plugin-backup", "synced-settings.json")), "BackupManager writes safe own plugin settings snapshot");
 assert(fs.existsSync(path.join(latest, "plugins", "plugin-a", "manifest.json")), "BackupManager latest contains selected plugin");
 assert(!fs.existsSync(path.join(latest, "plugins", "plugin-b", "manifest.json")), "BackupManager latest excludes unselected plugin");
+const localSnapshotRoot = path.join(vault, ".ob-plugin-backup-local", "ob-plugin-backup-local");
+const localSnapshotDirs = fs.readdirSync(localSnapshotRoot).sort();
+const createdLocalSnapshot = path.join(localSnapshotRoot, localSnapshotDirs[localSnapshotDirs.length - 1]);
+assert(!fs.existsSync(path.join(createdLocalSnapshot, "index.html")), "local safety snapshot excludes root HTML runtime files");
+assert(!fs.existsSync(path.join(createdLocalSnapshot, "copilot-index-abc123.json")), "local safety snapshot excludes generated root index cache files");
 
 console.log("\n=== BackupManager honors custom configDir ===");
 const customVault = path.join(OUT_DIR, "custom-vault");

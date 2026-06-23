@@ -11,6 +11,7 @@ import { getConfigDirName, getConfigPath, getVaultPath, resolveVaultPath } from 
 import { collectBackupFiles, getIncludedPluginIds, simpleHash } from "./file_utils";
 import { ensureDeviceIdentity } from "./device_utils";
 import { buildOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
+import { isSafeConfigRelativePath } from "./safe_paths";
 
 const fs = require("fs");
 const path = require("path");
@@ -211,7 +212,7 @@ export class BackupManager {
 		if (!localDir) return;
 
 		const snapshotDir = path.join(localDir, timestamp);
-		this.copyDirRecursive(configPath, snapshotDir);
+		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
 
 		fs.writeFileSync(
 			path.join(snapshotDir, META_FILE_NAME),
@@ -219,15 +220,21 @@ export class BackupManager {
 		);
 	}
 
-	private copyDirRecursive(src: string, dest: string): void {
+	private copyDirRecursive(
+		src: string,
+		dest: string,
+		shouldCopyFile?: (relativePath: string) => boolean,
+		prefix = "",
+	): void {
 		fs.mkdirSync(dest, { recursive: true });
 		const entries = fs.readdirSync(src, { withFileTypes: true });
 		for (const entry of entries) {
 			const srcPath = path.join(src, entry.name);
 			const destPath = path.join(dest, entry.name);
+			const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) {
-				this.copyDirRecursive(srcPath, destPath);
-			} else {
+				this.copyDirRecursive(srcPath, destPath, shouldCopyFile, relativePath);
+			} else if (!shouldCopyFile || shouldCopyFile(relativePath)) {
 				fs.copyFileSync(srcPath, destPath);
 			}
 		}

@@ -3,6 +3,7 @@ import type { AddonBackupSettings, PluginVersionDiff, RestoreCategoryGroup, Rest
 import { BackupManager } from "./backup";
 import { getConfigDirName, getConfigPath } from "./path_utils";
 import { copySelectedRestoreFiles, createRestorePreview } from "./restore_plan";
+import { isSafeConfigRelativePath } from "./safe_paths";
 
 const fs = require("fs");
 const path = require("path");
@@ -143,18 +144,24 @@ export class RestoreManager {
 		if (!localDir) return;
 
 		const snapshotDir = path.join(localDir, "pre-restore-" + timestamp);
-		this.copyDirRecursive(configPath, snapshotDir);
+		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
 	}
 
-	private copyDirRecursive(src: string, dest: string): void {
+	private copyDirRecursive(
+		src: string,
+		dest: string,
+		shouldCopyFile?: (relativePath: string) => boolean,
+		prefix = "",
+	): void {
 		fs.mkdirSync(dest, { recursive: true });
 		const entries = fs.readdirSync(src, { withFileTypes: true });
 		for (const entry of entries) {
 			const srcPath = path.join(src, entry.name);
 			const destPath = path.join(dest, entry.name);
+			const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) {
-				this.copyDirRecursive(srcPath, destPath);
-			} else {
+				this.copyDirRecursive(srcPath, destPath, shouldCopyFile, relativePath);
+			} else if (!shouldCopyFile || shouldCopyFile(relativePath)) {
 				fs.copyFileSync(srcPath, destPath);
 			}
 		}

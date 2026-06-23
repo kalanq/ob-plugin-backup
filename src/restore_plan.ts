@@ -9,6 +9,7 @@ import type {
 import { getIncludedPluginIds, readJsonFile, toVaultRelative } from "./file_utils";
 import { META_FILE_NAME } from "./constants";
 import { applyOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
+import { isSafeConfigRelativePath, normalizeConfigRelativePath, resolveConfigRelativePath } from "./safe_paths";
 
 const fs = require("fs");
 const path = require("path");
@@ -25,8 +26,8 @@ function collectRelativeFiles(rootDir: string): string[] {
 			const relativePath = toVaultRelative(path.join(prefix, entry.name));
 			if (entry.isDirectory()) {
 				walk(fullPath, relativePath);
-			} else if (entry.isFile()) {
-				result.push(relativePath);
+			} else if (entry.isFile() && isSafeConfigRelativePath(relativePath)) {
+				result.push(normalizeConfigRelativePath(relativePath) || relativePath);
 			}
 		}
 	};
@@ -186,11 +187,13 @@ export function copySelectedRestoreFiles(
 ): void {
 	const selected = Array.from(new Set(selectedRelativePaths)).sort();
 	for (const relativePath of selected) {
-		if (relativePath === META_FILE_NAME) continue;
-		const srcPath = path.join(backupPath, relativePath);
-		const destPath = path.join(configPath, relativePath);
+		const safeRelativePath = normalizeConfigRelativePath(relativePath);
+		if (!safeRelativePath || !isSafeConfigRelativePath(safeRelativePath)) continue;
+		const destPath = resolveConfigRelativePath(configPath, safeRelativePath);
+		if (!destPath) continue;
+		const srcPath = path.join(backupPath, safeRelativePath);
 		if (!fs.existsSync(srcPath) || !fs.statSync(srcPath).isFile()) continue;
-		if (relativePath === OWN_PLUGIN_SETTINGS_SYNC_PATH) {
+		if (safeRelativePath === OWN_PLUGIN_SETTINGS_SYNC_PATH) {
 			applyOwnPluginSettingsSnapshot(configPath, srcPath);
 			continue;
 		}
