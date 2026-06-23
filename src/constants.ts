@@ -2,6 +2,7 @@ import type { BackupCategory } from "./types";
 
 export const BACKUP_DIR_NAME = "ob-plugin-backup";
 export const LATEST_DIR_NAME = "latest";
+export const LATEST_ARCHIVE_NAME = "latest.zip";
 export const HISTORY_DIR_NAME = "history";
 export const META_FILE_NAME = "meta.json";
 export const LOCAL_SNAPSHOT_DIR_NAME = "ob-plugin-backup-local";

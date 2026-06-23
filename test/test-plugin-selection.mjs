@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { unzipSync } from "fflate";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const OUT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ob-plugin-backup-selection-"));
@@ -43,6 +44,11 @@ function replaceLatest(latestDir, tempDir) {
 	fs.renameSync(tempDir, latestDir);
 }
 
+function readZipEntries(zipPath) {
+	const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)));
+	return new Set(Object.keys(entries).sort());
+}
+
 await esbuild.build({
 	entryPoints: [
 		path.join(ROOT, "src/file_utils.ts"),
@@ -66,6 +72,7 @@ const { BackupManager } = require(path.join(OUT_DIR, "backup.cjs"));
 const vault = path.join(OUT_DIR, "vault");
 const config = path.join(vault, ".obsidian");
 const latest = path.join(vault, "meta", "ob-plugin-backup", "latest");
+const latestZip = path.join(vault, "meta", "ob-plugin-backup", "latest.zip");
 
 writeJson(path.join(config, "community-plugins.json"), ["plugin-a"]);
 writeJson(path.join(config, "plugins", "plugin-a", "manifest.json"), {
@@ -83,7 +90,7 @@ writeJson(path.join(config, "plugins", "plugin-b", "data.json"), { value: "b" })
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "manifest.json"), {
 	id: "ob-plugin-backup",
 	name: "Plugin Backup",
-	version: "0.1.5-beta",
+	version: "0.1.6-beta",
 });
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), { deviceName: "local" });
 writeText(path.join(config, "hotkeys.json"), "{}");
@@ -93,6 +100,7 @@ writeText(path.join(config, "copilot-index-abc123.json"), "{\"cache\":true}");
 const baseSettings = {
 	backupPath: "meta",
 	localSnapshotPath: ".ob-plugin-backup-local",
+	backupFormat: "archive",
 	backupAppearance: false,
 	backupHotkeys: true,
 	backupCorePlugins: false,
@@ -201,14 +209,20 @@ assert(meta.deviceId === "device-a", "meta records device id");
 assert(meta.deviceName === "Device A", "meta records device name");
 assert(meta.includedPluginIds.join(",") === "plugin-a", "meta records selected plugin ids");
 assert(!fs.existsSync(staleTempDir), "BackupManager removes stale latest temp folders");
-assert(fs.existsSync(path.join(latest, "plugins", "ob-plugin-backup", "synced-settings.json")), "BackupManager writes safe own plugin settings snapshot");
-assert(fs.existsSync(path.join(latest, "plugins", "plugin-a", "manifest.json")), "BackupManager latest contains selected plugin");
-assert(!fs.existsSync(path.join(latest, "plugins", "plugin-b", "manifest.json")), "BackupManager latest excludes unselected plugin");
+assert(fs.existsSync(latestZip), "BackupManager writes archive latest.zip");
+assert(!fs.existsSync(latest), "archive backup removes legacy latest directory");
+const latestZipEntries = readZipEntries(latestZip);
+assert(latestZipEntries.has("plugins/ob-plugin-backup/synced-settings.json"), "BackupManager writes safe own plugin settings snapshot into archive");
+assert(latestZipEntries.has("plugins/plugin-a/manifest.json"), "BackupManager archive contains selected plugin");
+assert(!latestZipEntries.has("plugins/plugin-b/manifest.json"), "BackupManager archive excludes unselected plugin");
+assert(latestZipEntries.has("meta.json"), "BackupManager archive contains self-describing meta.json");
 const localSnapshotRoot = path.join(vault, ".ob-plugin-backup-local", "ob-plugin-backup-local");
 const localSnapshotDirs = fs.readdirSync(localSnapshotRoot).sort();
 const createdLocalSnapshot = path.join(localSnapshotRoot, localSnapshotDirs[localSnapshotDirs.length - 1]);
-assert(!fs.existsSync(path.join(createdLocalSnapshot, "index.html")), "local safety snapshot excludes root HTML runtime files");
-assert(!fs.existsSync(path.join(createdLocalSnapshot, "copilot-index-abc123.json")), "local safety snapshot excludes generated root index cache files");
+assert(createdLocalSnapshot.endsWith(".zip"), "local safety snapshot is archived in archive mode");
+const localSnapshotEntries = readZipEntries(createdLocalSnapshot);
+assert(!localSnapshotEntries.has("index.html"), "local safety snapshot excludes root HTML runtime files");
+assert(!localSnapshotEntries.has("copilot-index-abc123.json"), "local safety snapshot excludes generated root index cache files");
 
 console.log("\n=== BackupManager honors custom configDir ===");
 const customVault = path.join(OUT_DIR, "custom-vault");
@@ -227,8 +241,10 @@ const customManager = new BackupManager({
 });
 await customManager.createBackup();
 const customLatest = path.join(customVault, "meta", "ob-plugin-backup", "latest");
+const customLatestZip = path.join(customVault, "meta", "ob-plugin-backup", "latest.zip");
 const customMeta = JSON.parse(fs.readFileSync(path.join(customVault, "meta", "ob-plugin-backup", "meta.json"), "utf8"));
-assert(fs.existsSync(path.join(customLatest, "hotkeys.json")), "custom configDir file is backed up");
+assert(!fs.existsSync(customLatest), "custom configDir archive backup does not leave latest directory");
+assert(readZipEntries(customLatestZip).has("hotkeys.json"), "custom configDir file is backed up into archive");
 assert(customMeta.configDir === ".custom-obsidian", "custom configDir is recorded in meta");
 
 console.log("\n" + "=".repeat(50));

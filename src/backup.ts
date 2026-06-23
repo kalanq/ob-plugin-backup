@@ -3,6 +3,7 @@ import type { AddonBackupSettings, BackupFile, BackupMeta, FileChange } from "./
 import {
 	BACKUP_DIR_NAME,
 	LATEST_DIR_NAME,
+	LATEST_ARCHIVE_NAME,
 	HISTORY_DIR_NAME,
 	META_FILE_NAME,
 	LOCAL_SNAPSHOT_DIR_NAME,
@@ -12,6 +13,7 @@ import { collectBackupFiles, getIncludedPluginIds, simpleHash } from "./file_uti
 import { ensureDeviceIdentity } from "./device_utils";
 import { buildOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
 import { isSafeConfigRelativePath } from "./safe_paths";
+import { isArchiveBackupPath, readArchiveText, writeArchiveFromDirectory } from "./archive_utils";
 
 const fs = require("fs");
 const path = require("path");
@@ -60,7 +62,9 @@ export class BackupManager {
 
 		const configPath = this.getConfigPath();
 		const latestDir = path.join(syncDir, LATEST_DIR_NAME);
+		const latestArchive = path.join(syncDir, LATEST_ARCHIVE_NAME);
 		const tempLatestDir = path.join(syncDir, `${LATEST_DIR_NAME}.tmp-${Date.now()}`);
+		const tempLatestArchive = path.join(syncDir, `${LATEST_ARCHIVE_NAME}.tmp-${Date.now()}.zip`);
 
 		const previousMeta = await this.readMeta();
 		const changes: string[] = [];
@@ -104,7 +108,18 @@ export class BackupManager {
 			await this.createLocalSnapshot(configPath, timestamp, meta);
 
 			fs.mkdirSync(syncDir, { recursive: true });
-			this.replaceLatestDir(syncDir, latestDir, tempLatestDir);
+			if (this.settings.backupFormat === "archive") {
+				writeArchiveFromDirectory(tempLatestDir, tempLatestArchive, meta);
+				this.replaceLatestArchive(syncDir, latestArchive, tempLatestArchive, latestDir);
+				if (fs.existsSync(tempLatestDir)) {
+					fs.rmSync(tempLatestDir, { recursive: true, force: true });
+				}
+			} else {
+				this.replaceLatestDir(syncDir, latestDir, tempLatestDir);
+				if (fs.existsSync(latestArchive)) {
+					fs.rmSync(latestArchive, { force: true });
+				}
+			}
 			fs.writeFileSync(path.join(syncDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 
 			this.cleanHistory(
@@ -118,6 +133,9 @@ export class BackupManager {
 		} catch (err) {
 			if (fs.existsSync(tempLatestDir)) {
 				fs.rmSync(tempLatestDir, { recursive: true, force: true });
+			}
+			if (fs.existsSync(tempLatestArchive)) {
+				fs.rmSync(tempLatestArchive, { force: true });
 			}
 			throw err;
 		}
@@ -193,14 +211,18 @@ export class BackupManager {
 		timestamp: string,
 		meta: BackupMeta,
 	): Promise<void> {
-		const historyDir = path.join(syncDir, HISTORY_DIR_NAME, timestamp);
 		if (!fs.existsSync(latestDir)) return;
 
+		if (this.settings.backupFormat === "archive") {
+			const historyDir = path.join(syncDir, HISTORY_DIR_NAME);
+			const archivePath = path.join(historyDir, `${timestamp}.zip`);
+			writeArchiveFromDirectory(latestDir, archivePath, meta);
+			return;
+		}
+
+		const historyDir = path.join(syncDir, HISTORY_DIR_NAME, timestamp);
 		this.copyDirRecursive(latestDir, historyDir);
-		fs.writeFileSync(
-			path.join(historyDir, META_FILE_NAME),
-			JSON.stringify(meta, null, 2),
-		);
+		fs.writeFileSync(path.join(historyDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 	}
 
 	private async createLocalSnapshot(
@@ -211,13 +233,15 @@ export class BackupManager {
 		const localDir = this.getLocalSnapshotDir();
 		if (!localDir) return;
 
+		if (this.settings.backupFormat === "archive") {
+			const archivePath = path.join(localDir, `${timestamp}.zip`);
+			writeArchiveFromDirectory(configPath, archivePath, meta, isSafeConfigRelativePath);
+			return;
+		}
+
 		const snapshotDir = path.join(localDir, timestamp);
 		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
-
-		fs.writeFileSync(
-			path.join(snapshotDir, META_FILE_NAME),
-			JSON.stringify(meta, null, 2),
-		);
+		fs.writeFileSync(path.join(snapshotDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 	}
 
 	private copyDirRecursive(
@@ -242,12 +266,48 @@ export class BackupManager {
 
 	private cleanHistory(historyDir: string, retentionCount: number): void {
 		if (!fs.existsSync(historyDir)) return;
-		const entries = fs.readdirSync(historyDir).sort();
+		const entries = fs.readdirSync(historyDir)
+			.filter((entry: string) => entry.endsWith(".zip") || fs.statSync(path.join(historyDir, entry)).isDirectory())
+			.sort();
 		while (entries.length > retentionCount) {
 			const oldest = entries.shift();
 			if (oldest) {
 				fs.rmSync(path.join(historyDir, oldest), { recursive: true, force: true });
 			}
+		}
+	}
+
+	private replaceLatestArchive(
+		syncDir: string,
+		latestArchive: string,
+		tempLatestArchive: string,
+		legacyLatestDir: string,
+	): void {
+		const previousLatestArchive = path.join(syncDir, `${LATEST_ARCHIVE_NAME}.previous-${Date.now()}`);
+		let movedPreviousLatest = false;
+
+		try {
+			if (fs.existsSync(previousLatestArchive)) {
+				fs.rmSync(previousLatestArchive, { force: true });
+			}
+			if (fs.existsSync(latestArchive)) {
+				fs.renameSync(latestArchive, previousLatestArchive);
+				movedPreviousLatest = true;
+			}
+			fs.renameSync(tempLatestArchive, latestArchive);
+			if (fs.existsSync(legacyLatestDir)) {
+				fs.rmSync(legacyLatestDir, { recursive: true, force: true });
+			}
+			if (movedPreviousLatest && fs.existsSync(previousLatestArchive)) {
+				fs.rmSync(previousLatestArchive, { force: true });
+			}
+		} catch (err) {
+			if (!fs.existsSync(latestArchive) && movedPreviousLatest && fs.existsSync(previousLatestArchive)) {
+				try {
+					fs.renameSync(previousLatestArchive, latestArchive);
+				} catch {}
+			}
+			throw err;
 		}
 	}
 
@@ -282,8 +342,10 @@ export class BackupManager {
 		const now = Date.now();
 		const entries = fs.readdirSync(syncDir, { withFileTypes: true });
 		for (const entry of entries) {
-			if (!entry.isDirectory() || !entry.name.startsWith(`${LATEST_DIR_NAME}.tmp-`)) continue;
 			const fullPath = path.join(syncDir, entry.name);
+			const isStaleTempDir = entry.isDirectory() && entry.name.startsWith(`${LATEST_DIR_NAME}.tmp-`);
+			const isStaleTempArchive = entry.isFile() && entry.name.startsWith(`${LATEST_ARCHIVE_NAME}.tmp-`);
+			if (!isStaleTempDir && !isStaleTempArchive) continue;
 			const stat = fs.statSync(fullPath);
 			if (now - stat.mtimeMs >= STALE_LATEST_TEMP_MAX_AGE_MS) {
 				fs.rmSync(fullPath, { recursive: true, force: true });
@@ -298,17 +360,21 @@ export class BackupManager {
 		if (!fs.existsSync(metaPath)) return null;
 		try {
 			const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-			return {
-				...meta,
-				pluginVersions: meta.pluginVersions || {},
-				includedPluginIds: meta.includedPluginIds || Object.keys(meta.pluginVersions || {}),
-				configDir: meta.configDir || getConfigDirName(this.app),
-				deviceId: meta.deviceId || this.settings.deviceId || "unknown-device",
-				deviceName: meta.deviceName || this.settings.deviceName || "Unknown device",
-			};
+			return this.normalizeMeta(meta);
 		} catch {
 			return null;
 		}
+	}
+
+	private normalizeMeta(meta: any): BackupMeta {
+		return {
+			...meta,
+			pluginVersions: meta.pluginVersions || {},
+			includedPluginIds: meta.includedPluginIds || Object.keys(meta.pluginVersions || {}),
+			configDir: meta.configDir || getConfigDirName(this.app),
+			deviceId: meta.deviceId || this.settings.deviceId || "unknown-device",
+			deviceName: meta.deviceName || this.settings.deviceName || "Unknown device",
+		};
 	}
 
 	getSyncBackupDir(): string {
@@ -324,6 +390,16 @@ export class BackupManager {
 		return path.join(this.getSyncBackupDir(), LATEST_DIR_NAME);
 	}
 
+	getSyncLatestPath(): string {
+		const syncDir = this.getSyncBackupDir();
+		const archivePath = path.join(syncDir, LATEST_ARCHIVE_NAME);
+		const dirPath = path.join(syncDir, LATEST_DIR_NAME);
+		if (this.settings.backupFormat === "archive" && fs.existsSync(archivePath)) return archivePath;
+		if (fs.existsSync(dirPath)) return dirPath;
+		if (fs.existsSync(archivePath)) return archivePath;
+		return this.settings.backupFormat === "archive" ? archivePath : dirPath;
+	}
+
 	getLocalSnapshotDirPublic(): string {
 		return this.getLocalSnapshotDir();
 	}
@@ -332,26 +408,28 @@ export class BackupManager {
 		const historyDir = this.getSyncHistoryDir();
 		if (!fs.existsSync(historyDir)) return [];
 
-		const entries = fs.readdirSync(historyDir).sort().reverse();
-		return entries.map((timestamp: string) => {
-			const metaPath = path.join(historyDir, timestamp, META_FILE_NAME);
+		const entries = fs.readdirSync(historyDir)
+			.filter((entry: string) => entry.endsWith(".zip") || fs.statSync(path.join(historyDir, entry)).isDirectory())
+			.sort()
+			.reverse();
+		return entries.map((entry: string) => {
+			const backupPath = path.join(historyDir, entry);
+			const timestamp = entry.endsWith(".zip") ? entry.slice(0, -4) : entry;
 			let meta: BackupMeta | null = null;
 			try {
-				if (fs.existsSync(metaPath)) {
-					const parsed = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-					meta = {
-						...parsed,
-						pluginVersions: parsed.pluginVersions || {},
-						includedPluginIds: parsed.includedPluginIds || Object.keys(parsed.pluginVersions || {}),
-						configDir: parsed.configDir || getConfigDirName(this.app),
-						deviceId: parsed.deviceId || this.settings.deviceId || "unknown-device",
-						deviceName: parsed.deviceName || this.settings.deviceName || "Unknown device",
-					};
+				if (isArchiveBackupPath(backupPath)) {
+					const archiveMeta = readArchiveText(backupPath, META_FILE_NAME);
+					if (archiveMeta) meta = this.normalizeMeta(JSON.parse(archiveMeta));
+				} else {
+					const metaPath = path.join(backupPath, META_FILE_NAME);
+					if (fs.existsSync(metaPath)) {
+						meta = this.normalizeMeta(JSON.parse(fs.readFileSync(metaPath, "utf8")));
+					}
 				}
 			} catch {}
 
 			const displayName = this.formatTimestamp(timestamp);
-			return { timestamp, displayName, meta };
+			return { timestamp: entry, displayName, meta };
 		});
 	}
 
@@ -359,10 +437,13 @@ export class BackupManager {
 		const localDir = this.getLocalSnapshotDir();
 		if (!fs.existsSync(localDir)) return [];
 
-		const entries = fs.readdirSync(localDir).sort().reverse();
-		return entries.map((timestamp: string) => ({
-			timestamp,
-			displayName: "Local: " + this.formatTimestamp(timestamp),
+		const entries = fs.readdirSync(localDir)
+			.filter((entry: string) => entry.endsWith(".zip") || fs.statSync(path.join(localDir, entry)).isDirectory())
+			.sort()
+			.reverse();
+		return entries.map((entry: string) => ({
+			timestamp: entry,
+			displayName: "Local: " + this.formatTimestamp(entry.endsWith(".zip") ? entry.slice(0, -4) : entry),
 		}));
 	}
 

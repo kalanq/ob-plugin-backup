@@ -69,7 +69,8 @@ GitHub also provides automatic source code archives on each release. They are so
 1. Open Obsidian Settings > Community Plugins.
 2. Enable "Plugin Backup".
 3. Configure the backup path, usually \`meta\`.
-4. Create the first backup manually.
+4. Keep the default archive zip format unless you need the legacy loose-file directory layout.
+5. Create the first backup manually.
 `;
 
 writeFileSync(join(DIST, "README.md"), readme, "utf8");

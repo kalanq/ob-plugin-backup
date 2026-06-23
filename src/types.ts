@@ -2,6 +2,7 @@ export interface AddonBackupSettings {
 	language: SupportedLanguage;
 	backupPath: string;
 	localSnapshotPath: string;
+	backupFormat: BackupFormat;
 	backupAppearance: boolean;
 	backupHotkeys: boolean;
 	backupCorePlugins: boolean;
@@ -29,12 +30,14 @@ export interface AddonBackupSettings {
 
 export type CommunityPluginSelectionMode = "all" | "selected";
 export type CommunityPluginDataMode = "all" | "none" | "selected";
+export type BackupFormat = "archive" | "directory";
 export type SupportedLanguage = "en" | "zh";
 
 export const DEFAULT_SETTINGS: AddonBackupSettings = {
 	language: "en",
 	backupPath: "meta",
 	localSnapshotPath: ".ob-plugin-backup-local",
+	backupFormat: "archive",
 	backupAppearance: true,
 	backupHotkeys: true,
 	backupCorePlugins: true,

@@ -10,11 +10,13 @@ import { getIncludedPluginIds, readJsonFile, toVaultRelative } from "./file_util
 import { META_FILE_NAME } from "./constants";
 import { applyOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
 import { isSafeConfigRelativePath, normalizeConfigRelativePath, resolveConfigRelativePath } from "./safe_paths";
+import { copySelectedArchiveFiles, isArchiveBackupPath, listArchiveFiles, readArchiveText } from "./archive_utils";
 
 const fs = require("fs");
 const path = require("path");
 
 function collectRelativeFiles(rootDir: string): string[] {
+	if (isArchiveBackupPath(rootDir)) return listArchiveFiles(rootDir);
 	if (!fs.existsSync(rootDir)) return [];
 	const result: string[] = [];
 
@@ -44,9 +46,30 @@ function readPluginVersionFromManifest(configPath: string, pluginId: string): st
 
 function readBackupPluginVersion(backupPath: string, meta: BackupMeta | null, pluginId: string): string {
 	if (meta?.pluginVersions?.[pluginId]) return meta.pluginVersions[pluginId];
+	if (isArchiveBackupPath(backupPath)) {
+		const manifestText = readArchiveText(backupPath, `plugins/${pluginId}/manifest.json`);
+		if (!manifestText) return "missing";
+		try {
+			const manifest = JSON.parse(manifestText);
+			return manifest?.version || "missing";
+		} catch {
+			return "missing";
+		}
+	}
 	const manifestPath = path.join(backupPath, "plugins", pluginId, "manifest.json");
 	const manifest = readJsonFile<any>(manifestPath, null);
 	return manifest?.version || "missing";
+}
+
+function normalizeBackupMeta(parsed: any): BackupMeta {
+	return {
+		...parsed,
+		pluginVersions: parsed.pluginVersions || {},
+		includedPluginIds: parsed.includedPluginIds || Object.keys(parsed.pluginVersions || {}),
+		configDir: parsed.configDir || ".obsidian",
+		deviceId: parsed.deviceId || "unknown-device",
+		deviceName: parsed.deviceName || "Unknown device",
+	};
 }
 
 function buildPluginVersionDiff(
@@ -66,18 +89,21 @@ function buildPluginVersionDiff(
 }
 
 export function readBackupMeta(backupPath: string, fallbackMeta: BackupMeta | null = null): BackupMeta | null {
+	if (isArchiveBackupPath(backupPath)) {
+		const archiveMeta = readArchiveText(backupPath, META_FILE_NAME);
+		if (!archiveMeta) return fallbackMeta;
+		try {
+			return normalizeBackupMeta(JSON.parse(archiveMeta));
+		} catch {
+			return fallbackMeta;
+		}
+	}
+
 	const metaPath = path.join(backupPath, META_FILE_NAME);
 	if (!fs.existsSync(metaPath)) return fallbackMeta;
 	try {
 		const parsed = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-		return {
-			...parsed,
-			pluginVersions: parsed.pluginVersions || {},
-			includedPluginIds: parsed.includedPluginIds || Object.keys(parsed.pluginVersions || {}),
-			configDir: parsed.configDir || ".obsidian",
-			deviceId: parsed.deviceId || "unknown-device",
-			deviceName: parsed.deviceName || "Unknown device",
-		};
+		return normalizeBackupMeta(parsed);
 	} catch {
 		return fallbackMeta;
 	}
@@ -185,6 +211,11 @@ export function copySelectedRestoreFiles(
 	configPath: string,
 	selectedRelativePaths: string[],
 ): void {
+	if (isArchiveBackupPath(backupPath)) {
+		copySelectedArchiveFiles(backupPath, configPath, selectedRelativePaths);
+		return;
+	}
+
 	const selected = Array.from(new Set(selectedRelativePaths)).sort();
 	for (const relativePath of selected) {
 		const safeRelativePath = normalizeConfigRelativePath(relativePath);

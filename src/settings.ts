@@ -20,6 +20,10 @@ type TranslationKey =
 	| "syncBackupPathDesc"
 	| "localSnapshotPath"
 	| "localSnapshotPathDesc"
+	| "backupFormat"
+	| "backupFormatDesc"
+	| "archiveFormat"
+	| "directoryFormat"
 	| "backupScope"
 	| "communityPluginSelection"
 	| "communityPluginSyncMode"
@@ -94,6 +98,10 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		syncBackupPathDesc: "NAS will sync this folder. Do not start with '.'. Default: meta",
 		localSnapshotPath: "Local safety snapshot path",
 		localSnapshotPathDesc: "Starts with '.' so NAS skips it. For emergency local recovery only.",
+		backupFormat: "Backup file format",
+		backupFormatDesc: "Archive mode stores each snapshot as a zip so Obsidian and other plugins see fewer files. Directory mode keeps the legacy loose-file layout.",
+		archiveFormat: "Archive zip files",
+		directoryFormat: "Legacy directory files",
 		backupScope: "Backup Scope",
 		communityPluginSelection: "Community Plugin Selection",
 		communityPluginSyncMode: "Community plugin sync mode",
@@ -167,6 +175,10 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		syncBackupPathDesc: "NAS 会同步这个文件夹。不要以 '.' 开头。默认：meta",
 		localSnapshotPath: "本地安全快照路径",
 		localSnapshotPathDesc: "建议以 '.' 开头，让 NAS 跳过，仅用于本地紧急恢复。",
+		backupFormat: "备份文件格式",
+		backupFormatDesc: "压缩包模式会把每个快照保存为 zip，减少 Obsidian 和其他插件能看到的文件数量。目录模式保留旧版散文件结构。",
+		archiveFormat: "压缩包 zip 文件",
+		directoryFormat: "旧版目录散文件",
 		backupScope: "备份范围",
 		communityPluginSelection: "社区插件选择",
 		communityPluginSyncMode: "社区插件同步模式",
@@ -386,6 +398,20 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 					.setValue(this.settings.localSnapshotPath)
 					.onChange(async (value) => {
 						this.settings.localSnapshotPath = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(this.t("backupFormat"))
+			.setDesc(this.t("backupFormatDesc"))
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("archive", this.t("archiveFormat"))
+					.addOption("directory", this.t("directoryFormat"))
+					.setValue(this.settings.backupFormat || "archive")
+					.onChange(async (value) => {
+						this.settings.backupFormat = value as "archive" | "directory";
 						await this.plugin.saveSettings();
 					})
 			);

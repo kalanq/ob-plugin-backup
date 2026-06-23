@@ -22,6 +22,7 @@ A lightweight plugin for backing up and syncing Obsidian configurations, plugins
 *   **Automation**: Supports auto-backup on startup and scheduled interval backups.
 *   **Diff Checker**: Compare current local configurations with the latest backup in one click.
 *   **Device-aware Restore**: Backups are labeled by device, and restore previews are grouped by device and category.
+*   **Archive Backup Mode**: By default, snapshots are stored as `latest.zip` and `history/*.zip` so Obsidian, Dataview, search, and other plugins see fewer loose files inside the vault. Legacy directory mode remains available in settings.
 *   **Plugin Data Controls**: Community plugin files and plugin `data.json` files can be controlled separately.
 *   **Plugin Data Protection**: Excludes this plugin's own raw `data.json` by default, while safely syncing selected Plugin Backup options through `synced-settings.json`.
 *   **Bilingual Settings UI**: Switch the settings page between English and Chinese.
@@ -54,6 +55,7 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
     *   Go to `Plugin Backup Settings`.
     *   Configure **Sync backup path** (relative to vault root, defaults to `meta` which is synced via NAS).
     *   Configure **Local safety snapshot path** (defaults to `.ob-plugin-backup-local`, which should be ignored by NAS).
+    *   Keep **Backup file format** as archive zip files unless you need the legacy loose-file directory layout.
     *   Select categories you want to backup (Appearance, Hotkeys, Core Plugins, Community Plugins, etc.).
 2.  **Manual Backup**:
     *   Run command `Plugin Backup: Create Backup` or click **Backup** in the settings panel.
@@ -83,6 +85,7 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
 *   **自动与定时任务**：支持启动时自动备份、定时自动备份。
 *   **配置变更检测**：支持一键检查当前本地配置与备份配置的差异并输出差异日志。
 *   **设备感知恢复**：备份会记录设备名称，恢复预览可按设备和类别分组筛选。
+*   **压缩包备份模式**：默认将快照保存为 `latest.zip` 和 `history/*.zip`，减少 Vault 内可被 Obsidian、Dataview、搜索和其他插件遍历到的散文件数量。设置中仍可切回旧版目录模式。
 *   **插件数据控制**：社区插件本体和插件 `data.json` 可分开控制，支持只同步插件本体和版本。
 *   **插件自身数据保护**：默认排除本插件原始 `data.json`，并通过 `synced-settings.json` 安全同步部分 Plugin Backup 设置。
 *   **中英文设置界面**：可在插件设置页顶部切换 English / 中文。
@@ -111,6 +114,7 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
     *   进入插件设置面板（`Plugin Backup Settings`）。
     *   配置 **Sync backup path**（同步备份路径，默认会在您 Vault 下创建 `meta` 目录，由您的 NAS 软件负责同步此目录）。
     *   配置 **Local safety snapshot path**（本地安全快照路径，默认是 `.ob-plugin-backup-local`，此目录应被同步软件忽略）。
+    *   **Backup file format** 建议保持压缩包模式；只有需要旧版散文件目录结构时再切换为目录模式。
     *   勾选您需要备份的范围（如外观设置、快捷键、核心/社区插件清单及插件配置等）。
 2.  **手动备份**：
     *   在命令面板中运行 `Plugin Backup: Create Backup` 命令，或在设置面板中点击 **Backup** 按钮。

@@ -4,6 +4,7 @@ import { BackupManager } from "./backup";
 import { getConfigDirName, getConfigPath } from "./path_utils";
 import { copySelectedRestoreFiles, createRestorePreview } from "./restore_plan";
 import { isSafeConfigRelativePath } from "./safe_paths";
+import { writeArchiveFromDirectory } from "./archive_utils";
 
 const fs = require("fs");
 const path = require("path");
@@ -29,12 +30,12 @@ export class RestoreManager {
 	}
 
 	async restoreLatest(): Promise<void> {
-		const latestDir = this.backupManager.getSyncLatestDir();
-		if (!fs.existsSync(latestDir)) {
+		const latestPath = this.backupManager.getSyncLatestPath();
+		if (!fs.existsSync(latestPath)) {
 			new Notice("Plugin Backup: No backup found.");
 			return;
 		}
-		await this.openRestoreConfirmation(latestDir, await this.backupManager.readMeta());
+		await this.openRestoreConfirmation(latestPath, await this.backupManager.readMeta());
 	}
 
 	async restoreFromHistory(): Promise<void> {
@@ -142,6 +143,12 @@ export class RestoreManager {
 	private createLocalSafetySnapshot(configPath: string, timestamp: string): void {
 		const localDir = this.backupManager.getLocalSnapshotDirPublic();
 		if (!localDir) return;
+
+		if (this.settings.backupFormat === "archive") {
+			const snapshotPath = path.join(localDir, `pre-restore-${timestamp}.zip`);
+			writeArchiveFromDirectory(configPath, snapshotPath, null, isSafeConfigRelativePath);
+			return;
+		}
 
 		const snapshotDir = path.join(localDir, "pre-restore-" + timestamp);
 		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);

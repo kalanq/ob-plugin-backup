@@ -18,6 +18,7 @@ export function normalizeConfigRelativePath(relativePath: string): string | null
 	if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
 		return null;
 	}
+	if (normalized.endsWith("/")) return null;
 	return normalized;
 }
 

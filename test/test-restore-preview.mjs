@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { strToU8, zipSync } from "fflate";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const OUT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ob-plugin-backup-restore-"));
@@ -35,6 +36,17 @@ function readJson(filePath) {
 	return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function writeZip(filePath, entries) {
+	const zipEntries = {};
+	for (const [name, value] of Object.entries(entries)) {
+		zipEntries[name] = typeof value === "string"
+			? strToU8(value)
+			: strToU8(JSON.stringify(value, null, 2));
+	}
+	fs.mkdirSync(path.dirname(filePath), { recursive: true });
+	fs.writeFileSync(filePath, zipSync(zipEntries, { level: 6 }));
+}
+
 await esbuild.build({
 	entryPoints: [path.join(ROOT, "src/restore_plan.ts")],
 	bundle: true,
@@ -51,6 +63,7 @@ const {
 
 const config = path.join(OUT_DIR, "vault", ".obsidian");
 const backup = path.join(OUT_DIR, "backup");
+const archiveBackup = path.join(OUT_DIR, "backup.zip");
 
 writeJson(path.join(config, "app.json"), { value: "local-app" });
 writeJson(path.join(config, "hotkeys.json"), { value: "local-hotkeys" });
@@ -108,6 +121,32 @@ writeJson(path.join(backup, "meta.json"), {
 	deviceName: "Device A",
 });
 
+writeZip(archiveBackup, {
+	"app.json": { value: "archive-app" },
+	"hotkeys.json": { value: "archive-hotkeys" },
+	"plugins/plugin-a/manifest.json": {
+		id: "plugin-a",
+		name: "Plugin A",
+		version: "3.0.0",
+	},
+	"plugins/plugin-a/data.json": { value: "archive-plugin" },
+	"plugins/plugin-a/index.html": "<html><body>plugin asset</body></html>",
+	"index.html": "<html><body>runtime entry</body></html>",
+	"copilot-index-abc123.json": "{\"cache\":true}",
+	"meta.json": {
+		version: "1.0.0",
+		lastBackupTime: Date.now(),
+		lastBackupTimeStr: new Date().toISOString(),
+		fileHashes: {},
+		changelog: ["~ app.json"],
+		pluginVersions: { "plugin-a": "3.0.0" },
+		includedPluginIds: ["plugin-a"],
+		configDir: ".obsidian",
+		deviceId: "device-archive",
+		deviceName: "Archive Device",
+	},
+});
+
 console.log("=== Restore preview ===");
 const preview = createRestorePreview(backup, config, ".obsidian", null, "device-a", "Device A");
 assert(preview.files.includes("app.json"), "preview includes app.json");
@@ -147,6 +186,22 @@ assert(ownData.localSnapshotPath === ".local-only", "safe own settings restore p
 assert(ownData.deviceName === "Local Device", "safe own settings restore preserves device name");
 assert(Array.isArray(ownData.historyRecords) && ownData.historyRecords[0] === "keep-me", "safe own settings restore preserves local history records");
 assert(ownData.lastSyncTime === "local-only", "safe own settings restore preserves local sync records");
+
+console.log("\n=== Archive restore preview ===");
+const archivePreview = createRestorePreview(archiveBackup, config, ".obsidian", null, "device-a", "Device A");
+assert(archivePreview.files.includes("app.json"), "archive preview includes app.json");
+assert(archivePreview.files.includes("plugins/plugin-a/data.json"), "archive preview includes plugin data");
+assert(!archivePreview.files.includes("index.html"), "archive preview excludes root HTML runtime files");
+assert(!archivePreview.files.includes("copilot-index-abc123.json"), "archive preview excludes generated root index cache files");
+assert(archivePreview.files.includes("plugins/plugin-a/index.html"), "archive preview keeps plugin asset HTML files");
+assert(archivePreview.deviceId === "device-archive", "archive preview reads embedded meta");
+assert(archivePreview.pluginVersionDiffs[0].backupVersion === "3.0.0", "archive preview reads plugin version from embedded meta");
+
+console.log("\n=== Archive selective restore ===");
+copySelectedRestoreFiles(archiveBackup, config, ["hotkeys.json", "plugins/plugin-a/index.html", "index.html"]);
+assert(readJson(path.join(config, "hotkeys.json")).value === "archive-hotkeys", "archive selected config file restored");
+assert(fs.existsSync(path.join(config, "plugins", "plugin-a", "index.html")), "archive selected plugin HTML asset restored");
+assert(!fs.existsSync(path.join(config, "index.html")), "archive restore skips root HTML runtime files");
 
 console.log("\n" + "=".repeat(50));
 console.log(`Results: ${passed} passed, ${failed} failed`);

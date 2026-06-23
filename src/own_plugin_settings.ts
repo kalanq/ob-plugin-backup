@@ -9,6 +9,7 @@ export const OWN_PLUGIN_SETTINGS_SYNC_PATH = "plugins/ob-plugin-backup/synced-se
 
 const SAFE_SYNC_SETTING_KEYS: Array<keyof AddonBackupSettings> = [
 	"language",
+	"backupFormat",
 	"backupAppearance",
 	"backupHotkeys",
 	"backupCorePlugins",
@@ -51,7 +52,11 @@ export function buildOwnPluginSettingsSnapshot(settings: AddonBackupSettings): O
 export function applyOwnPluginSettingsSnapshot(configPath: string, snapshotPath: string): void {
 	if (!fs.existsSync(snapshotPath)) return;
 
-	const snapshot = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as OwnPluginSettingsSnapshot;
+	applyOwnPluginSettingsSnapshotContent(configPath, fs.readFileSync(snapshotPath, "utf8"));
+}
+
+export function applyOwnPluginSettingsSnapshotContent(configPath: string, content: string): void {
+	const snapshot = JSON.parse(content) as OwnPluginSettingsSnapshot;
 	if (!snapshot || snapshot.version !== 1 || !snapshot.settings) return;
 
 	const dataPath = path.join(configPath, OWN_PLUGIN_DATA_PATH);
