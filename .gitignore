@@ -46,3 +46,7 @@ meta/
 !test/test-plugin-selection.mjs
 !test/test-restore-preview.mjs
 !test/test-installer.ps1
+
+# 8. Allow project process documentation
+!docs/
+!docs/development-workflow.md

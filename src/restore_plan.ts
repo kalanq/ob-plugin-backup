@@ -6,6 +6,7 @@ import type {
 	RestoreFileInfo,
 	RestoreDeviceGroup,
 	RestorePathWarning,
+	RestorePluginGroup,
 	RestorePreview,
 } from "./types";
 import { getIncludedPluginIds, readJsonFile, simpleHash, toVaultRelative } from "./file_utils";
@@ -164,6 +165,17 @@ function readBackupPluginVersion(backupPath: string, meta: BackupMeta | null, pl
 	return manifest?.version || "missing";
 }
 
+function readBackupPluginName(backupPath: string, pluginId: string): string {
+	const manifestText = readBackupFileText(backupPath, `plugins/${pluginId}/manifest.json`);
+	if (!manifestText) return pluginId;
+	try {
+		const manifest = JSON.parse(manifestText);
+		return manifest?.name || pluginId;
+	} catch {
+		return pluginId;
+	}
+}
+
 function normalizeBackupMeta(parsed: any): BackupMeta {
 	return {
 		...parsed,
@@ -243,6 +255,8 @@ function getCategoryLabel(category: RestoreCategory): string {
 function buildCategoryGroups(
 	files: string[],
 	pluginVersionDiffs: PluginVersionDiff[],
+	backupPath: string,
+	fileInfos: Record<string, RestoreFileInfo>,
 ): RestoreCategoryGroup[] {
 	const order: RestoreCategory[] = [
 		"communityPlugins",
@@ -259,15 +273,44 @@ function buildCategoryGroups(
 		.map((category) => {
 			const categoryFiles = files.filter((file) => getRestoreCategory(file) === category);
 			const pluginIds = getIncludedPluginIds(categoryFiles);
+			const pluginGroups = buildPluginGroups(categoryFiles, pluginVersionDiffs, backupPath, fileInfos);
 			return {
 				key: category,
 				label: getCategoryLabel(category),
 				files: categoryFiles,
 				pluginIds,
+				pluginGroups,
 				pluginVersionDiffs: pluginVersionDiffs.filter((diff) => pluginIds.includes(diff.id)),
 			};
 		})
 		.filter((group) => group.files.length > 0);
+}
+
+function buildPluginGroups(
+	files: string[],
+	pluginVersionDiffs: PluginVersionDiff[],
+	backupPath: string,
+	fileInfos: Record<string, RestoreFileInfo>,
+): RestorePluginGroup[] {
+	const byPlugin = new Map<string, string[]>();
+	for (const file of files) {
+		const match = file.match(/^plugins\/([^/]+)\//);
+		if (!match) continue;
+		const pluginId = match[1];
+		const pluginFiles = byPlugin.get(pluginId) || [];
+		pluginFiles.push(file);
+		byPlugin.set(pluginId, pluginFiles);
+	}
+
+	return Array.from(byPlugin.entries())
+		.map(([id, pluginFiles]) => ({
+			id,
+			name: readBackupPluginName(backupPath, id),
+			files: pluginFiles.sort(),
+			versionDiff: pluginVersionDiffs.find((diff) => diff.id === id) || null,
+			pathWarningCount: pluginFiles.reduce((count, file) => count + (fileInfos[file]?.pathWarnings.length || 0), 0),
+		}))
+		.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 export function createRestorePreview(
@@ -296,14 +339,14 @@ export function createRestorePreview(
 		deviceName,
 		isCurrentDevice: currentDeviceId ? deviceId === currentDeviceId : false,
 		files,
-		categories: buildCategoryGroups(files, pluginVersionDiffs),
+		categories: buildCategoryGroups(files, pluginVersionDiffs, backupPath, fileInfos),
 	}];
 	const allGroups: RestoreDeviceGroup[] = [{
 		deviceId,
 		deviceName,
 		isCurrentDevice: currentDeviceId ? deviceId === currentDeviceId : false,
 		files: allFiles,
-		categories: buildCategoryGroups(allFiles, pluginVersionDiffs),
+		categories: buildCategoryGroups(allFiles, pluginVersionDiffs, backupPath, fileInfos),
 	}];
 
 	return {

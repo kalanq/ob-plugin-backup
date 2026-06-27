@@ -1,5 +1,5 @@
 import { App, FuzzySuggestModal, Modal, Notice, Setting } from "obsidian";
-import type { AddonBackupSettings, PluginVersionDiff, RestoreCategoryGroup, RestorePreview } from "./types";
+import type { AddonBackupSettings, PluginVersionDiff, RestoreCategoryGroup, RestorePluginGroup, RestorePreview } from "./types";
 import { BackupManager } from "./backup";
 import { getConfigDirName, getConfigPath } from "./path_utils";
 import { copySelectedRestoreFiles, createRestorePreview } from "./restore_plan";
@@ -308,22 +308,76 @@ class RestoreConfirmModal extends Modal {
 			}
 		}
 
-		for (const file of category.files) {
-			const info = this.preview.fileInfos[file];
-			const status = info?.status && info.status !== "same" ? ` (${info.status})` : "";
-			const warningText = info?.pathWarnings?.length
-				? `Absolute paths: ${info.pathWarnings.map((warning) =>
-					`${warning.jsonPath} = ${warning.value}${warning.existsOnThisDevice ? "" : " (not found on this device)"}`
-				).join("; ")}`
-				: "";
-			new Setting(details)
-				.setName(`${file}${status}${info?.pathWarnings?.length ? " [absolute path]" : ""}`)
-				.setDesc(warningText)
-				.addToggle((toggle) => {
-					toggle.setValue(this.selectedPaths.has(file));
-					toggle.onChange((value) => this.setFilesSelected([file], value));
-				});
+		const pluginFileSet = new Set(category.pluginGroups.flatMap((group) => group.files));
+		for (const file of category.files.filter((file) => !pluginFileSet.has(file))) {
+			this.renderFileToggle(details, file);
 		}
+
+		if (category.key === "communityPlugins") {
+			for (const pluginGroup of category.pluginGroups) {
+				this.renderPluginGroup(details, pluginGroup);
+			}
+			return;
+		}
+
+		for (const file of category.files.filter((file) => pluginFileSet.has(file))) {
+			this.renderFileToggle(details, file);
+		}
+	}
+
+	private renderPluginGroup(containerEl: HTMLElement, pluginGroup: RestorePluginGroup): void {
+		const details = containerEl.createEl("details");
+		details.open = pluginGroup.pathWarningCount > 0
+			|| !!pluginGroup.versionDiff && pluginGroup.versionDiff.status !== "same";
+		const selectedCount = pluginGroup.files.filter((file) => this.selectedPaths.has(file)).length;
+		const statusParts = [
+			`${selectedCount}/${pluginGroup.files.length} files`,
+			pluginGroup.versionDiff && pluginGroup.versionDiff.status !== "same"
+				? `version ${pluginGroup.versionDiff.status}`
+				: "",
+			pluginGroup.pathWarningCount > 0 ? `${pluginGroup.pathWarningCount} absolute path warning(s)` : "",
+		].filter(Boolean);
+		details.createEl("summary", {
+			text: `${pluginGroup.name} (${pluginGroup.id}) - ${statusParts.join(", ")}`,
+		});
+
+		new Setting(details)
+			.setName(`Select ${pluginGroup.name}`)
+			.setDesc(`Restore all selected-view files for ${pluginGroup.id}`)
+			.addToggle((toggle) => {
+				toggle.setValue(pluginGroup.files.every((file) => this.selectedPaths.has(file)));
+				toggle.onChange((value) => {
+					this.setFilesSelected(pluginGroup.files, value);
+					this.onOpen();
+				});
+			});
+
+		if (pluginGroup.versionDiff && pluginGroup.versionDiff.status !== "same") {
+			details.createEl("div", {
+				text: `${pluginGroup.id}: backup ${pluginGroup.versionDiff.backupVersion}, local ${pluginGroup.versionDiff.currentVersion}${this.formatStatus(pluginGroup.versionDiff)}`,
+			});
+		}
+
+		for (const file of pluginGroup.files) {
+			this.renderFileToggle(details, file);
+		}
+	}
+
+	private renderFileToggle(containerEl: HTMLElement, file: string): void {
+		const info = this.preview.fileInfos[file];
+		const status = info?.status && info.status !== "same" ? ` (${info.status})` : "";
+		const warningText = info?.pathWarnings?.length
+			? `Absolute paths: ${info.pathWarnings.map((warning) =>
+				`${warning.jsonPath} = ${warning.value}${warning.existsOnThisDevice ? "" : " (not found on this device)"}`
+			).join("; ")}`
+			: "";
+		new Setting(containerEl)
+			.setName(`${file}${status}${info?.pathWarnings?.length ? " [absolute path]" : ""}`)
+			.setDesc(warningText)
+			.addToggle((toggle) => {
+				toggle.setValue(this.selectedPaths.has(file));
+				toggle.onChange((value) => this.setFilesSelected([file], value));
+			});
 	}
 
 	private getCategoryDescription(category: RestoreCategoryGroup): string {

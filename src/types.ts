@@ -134,6 +134,14 @@ export interface RestoreFileInfo {
 	pathWarnings: RestorePathWarning[];
 }
 
+export interface RestorePluginGroup {
+	id: string;
+	name: string;
+	files: string[];
+	versionDiff: PluginVersionDiff | null;
+	pathWarningCount: number;
+}
+
 export interface RestorePreview {
 	backupPath: string;
 	configDirName: string;
@@ -165,6 +173,7 @@ export interface RestoreCategoryGroup {
 	label: string;
 	files: string[];
 	pluginIds: string[];
+	pluginGroups: RestorePluginGroup[];
 	pluginVersionDiffs: PluginVersionDiff[];
 }
 

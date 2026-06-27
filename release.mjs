@@ -73,6 +73,7 @@ GitHub also provides automatic source code archives on each release. They are so
 5. Create the first backup manually.
 6. Use "Create Local Safety Snapshot" when you only want a local rollback point and do not want to update the synced backup.
 7. Restore dialogs show changed or missing files by default and mark JSON settings that contain absolute local paths.
+8. Community plugin restore entries are grouped by plugin name and id, with plugin-level selection.
 
 ## Multi-device retention note
 
