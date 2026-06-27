@@ -93,6 +93,12 @@ writeJson(path.join(config, "plugins", "ob-plugin-backup", "manifest.json"), {
 	version: "0.1.6-beta",
 });
 writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), { deviceName: "local" });
+writeJson(path.join(config, "core-plugins.json"), { "daily-notes": true, templates: true });
+writeJson(path.join(config, "daily-notes.json"), {
+	folder: "Daily record/Daily Record by Zihan",
+	template: "Meta/Templates/Daily note",
+});
+writeJson(path.join(config, "templates.json"), { folder: "Meta/Templates" });
 writeText(path.join(config, "hotkeys.json"), "{}");
 writeText(path.join(config, "index.html"), "<html><body>runtime entry</body></html>");
 writeText(path.join(config, "copilot-index-abc123.json"), "{\"cache\":true}");
@@ -176,6 +182,18 @@ const selectedFiles = collectBackupFiles(config, latest, selectedSettings).map((
 assert(selectedFiles.includes("plugins/plugin-a/data.json"), "selected mode includes chosen plugin");
 assert(!selectedFiles.includes("plugins/plugin-b/data.json"), "selected mode excludes unchosen plugin");
 assert(selectedFiles.includes("community-plugins.json"), "selected mode keeps plugin enablement file");
+
+const corePluginSettings = {
+	...baseSettings,
+	backupCorePlugins: true,
+	backupHotkeys: false,
+	backupCommunityPlugins: false,
+};
+const corePluginFiles = collectBackupFiles(config, latest, corePluginSettings).map((file) => file.relativePath);
+assert(corePluginFiles.includes("core-plugins.json"), "core plugin backup includes enablement file");
+assert(corePluginFiles.includes("daily-notes.json"), "core plugin backup includes Daily Notes settings");
+assert(corePluginFiles.includes("templates.json"), "core plugin backup includes Templates settings");
+assert(!corePluginFiles.includes("workspace.json"), "core plugin backup does not include generated workspace state");
 
 console.log("\n=== Latest replacement removes stale plugin files ===");
 fs.mkdirSync(path.join(latest, "plugins", "plugin-b"), { recursive: true });

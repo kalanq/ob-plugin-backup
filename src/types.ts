@@ -119,16 +119,35 @@ export interface PluginVersionDiff {
 	status: "same" | "different" | "missing-local" | "missing-backup";
 }
 
+export type RestoreFileStatus = "same" | "different" | "missing-local";
+
+export interface RestorePathWarning {
+	jsonPath: string;
+	value: string;
+	kind: "windows" | "unc" | "posix" | "file-url";
+	existsOnThisDevice: boolean;
+}
+
+export interface RestoreFileInfo {
+	path: string;
+	status: RestoreFileStatus;
+	pathWarnings: RestorePathWarning[];
+}
+
 export interface RestorePreview {
 	backupPath: string;
 	configDirName: string;
 	files: string[];
+	allFiles: string[];
+	unchangedFiles: string[];
+	fileInfos: Record<string, RestoreFileInfo>;
 	pluginIds: string[];
 	pluginVersionDiffs: PluginVersionDiff[];
 	meta: BackupMeta | null;
 	deviceId: string;
 	deviceName: string;
 	groups: RestoreDeviceGroup[];
+	allGroups: RestoreDeviceGroup[];
 }
 
 export type RestoreCategory =

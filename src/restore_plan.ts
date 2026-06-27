@@ -3,11 +3,13 @@ import type {
 	PluginVersionDiff,
 	RestoreCategory,
 	RestoreCategoryGroup,
+	RestoreFileInfo,
 	RestoreDeviceGroup,
+	RestorePathWarning,
 	RestorePreview,
 } from "./types";
-import { getIncludedPluginIds, readJsonFile, toVaultRelative } from "./file_utils";
-import { META_FILE_NAME } from "./constants";
+import { getIncludedPluginIds, readJsonFile, simpleHash, toVaultRelative } from "./file_utils";
+import { CONFIG_FILES, META_FILE_NAME } from "./constants";
 import { applyOwnPluginSettingsSnapshot, OWN_PLUGIN_SETTINGS_SYNC_PATH } from "./own_plugin_settings";
 import { isSafeConfigRelativePath, normalizeConfigRelativePath, resolveConfigRelativePath } from "./safe_paths";
 import { copySelectedArchiveFiles, isArchiveBackupPath, listArchiveFiles, readArchiveText } from "./archive_utils";
@@ -36,6 +38,107 @@ function collectRelativeFiles(rootDir: string): string[] {
 
 	walk(rootDir, "");
 	return result.sort();
+}
+
+function readBackupFileText(backupPath: string, relativePath: string): string | null {
+	const normalized = normalizeConfigRelativePath(relativePath);
+	if (!normalized) return null;
+	if (isArchiveBackupPath(backupPath)) return readArchiveText(backupPath, normalized);
+	const filePath = path.join(backupPath, normalized);
+	if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return null;
+	try {
+		return fs.readFileSync(filePath, "utf8");
+	} catch {
+		return null;
+	}
+}
+
+function readLocalFileText(configPath: string, relativePath: string): string | null {
+	const localPath = resolveConfigRelativePath(configPath, relativePath);
+	if (!localPath || !fs.existsSync(localPath) || !fs.statSync(localPath).isFile()) return null;
+	try {
+		return fs.readFileSync(localPath, "utf8");
+	} catch {
+		return null;
+	}
+}
+
+function getRestoreFileStatus(backupPath: string, configPath: string, relativePath: string): RestoreFileInfo["status"] {
+	const backupText = readBackupFileText(backupPath, relativePath);
+	const localText = readLocalFileText(configPath, relativePath);
+	if (localText === null) return "missing-local";
+	if (backupText !== null && simpleHash(backupText) === simpleHash(localText)) return "same";
+	return "different";
+}
+
+function classifyAbsolutePath(value: string): RestorePathWarning["kind"] | null {
+	if (/^file:\/\//i.test(value)) return "file-url";
+	if (/^\\\\/.test(value)) return "unc";
+	if (/^[A-Za-z]:[\\/]/.test(value)) return "windows";
+	if (/^\//.test(value)) return "posix";
+	return null;
+}
+
+function pointerEscape(segment: string): string {
+	return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function collectAbsolutePathWarningsFromJson(value: unknown, jsonPath = ""): RestorePathWarning[] {
+	const warnings: RestorePathWarning[] = [];
+	if (typeof value === "string") {
+		const kind = classifyAbsolutePath(value);
+		if (kind) {
+			let existsOnThisDevice = false;
+			try {
+				const filePath = kind === "file-url" ? new URL(value) : value;
+				existsOnThisDevice = fs.existsSync(filePath as any);
+			} catch {
+				existsOnThisDevice = false;
+			}
+			warnings.push({
+				jsonPath: jsonPath || "/",
+				value,
+				kind,
+				existsOnThisDevice,
+			});
+		}
+		return warnings;
+	}
+	if (Array.isArray(value)) {
+		value.forEach((item, index) => {
+			warnings.push(...collectAbsolutePathWarningsFromJson(item, `${jsonPath}/${index}`));
+		});
+		return warnings;
+	}
+	if (value && typeof value === "object") {
+		for (const [key, item] of Object.entries(value)) {
+			warnings.push(...collectAbsolutePathWarningsFromJson(item, `${jsonPath}/${pointerEscape(key)}`));
+		}
+	}
+	return warnings;
+}
+
+function getPathWarnings(backupPath: string, relativePath: string): RestorePathWarning[] {
+	if (!relativePath.endsWith(".json")) return [];
+	const text = readBackupFileText(backupPath, relativePath);
+	if (!text) return [];
+	try {
+		return collectAbsolutePathWarningsFromJson(JSON.parse(text));
+	} catch {
+		return [];
+	}
+}
+
+function buildFileInfos(backupPath: string, configPath: string, files: string[]): Record<string, RestoreFileInfo> {
+	const result: Record<string, RestoreFileInfo> = {};
+	for (const file of files) {
+		result[file] = {
+			path: file,
+			status: getRestoreFileStatus(backupPath, configPath, file),
+			pathWarnings: getPathWarnings(backupPath, file),
+		};
+	}
+	return result;
 }
 
 function readPluginVersionFromManifest(configPath: string, pluginId: string): string {
@@ -116,7 +219,7 @@ export function getRestoreCategory(relativePath: string): RestoreCategory {
 		return "appearance";
 	}
 	if (relativePath === "hotkeys.json") return "hotkeys";
-	if (relativePath === "core-plugins.json" || relativePath === "core-plugins-migration.json") return "corePlugins";
+	if (CONFIG_FILES.corePlugins.includes(relativePath)) return "corePlugins";
 	if (relativePath === "app.json") return "appSettings";
 	if (relativePath === "bookmarks.json") return "bookmarks";
 	if (relativePath === "graph.json") return "graph";
@@ -175,9 +278,12 @@ export function createRestorePreview(
 	currentDeviceId = "",
 	currentDeviceName = "",
 ): RestorePreview {
-	const files = collectRelativeFiles(backupPath);
+	const allFiles = collectRelativeFiles(backupPath);
+	const fileInfos = buildFileInfos(backupPath, configPath, allFiles);
+	const files = allFiles.filter((file) => fileInfos[file]?.status !== "same");
+	const unchangedFiles = allFiles.filter((file) => fileInfos[file]?.status === "same");
 	const meta = readBackupMeta(backupPath, fallbackMeta);
-	const pluginIds = (meta?.includedPluginIds?.length ? meta.includedPluginIds : getIncludedPluginIds(files))
+	const pluginIds = (meta?.includedPluginIds?.length ? meta.includedPluginIds : getIncludedPluginIds(allFiles))
 		.slice()
 		.sort();
 	const deviceId = meta?.deviceId || "unknown-device";
@@ -192,17 +298,28 @@ export function createRestorePreview(
 		files,
 		categories: buildCategoryGroups(files, pluginVersionDiffs),
 	}];
+	const allGroups: RestoreDeviceGroup[] = [{
+		deviceId,
+		deviceName,
+		isCurrentDevice: currentDeviceId ? deviceId === currentDeviceId : false,
+		files: allFiles,
+		categories: buildCategoryGroups(allFiles, pluginVersionDiffs),
+	}];
 
 	return {
 		backupPath,
 		configDirName,
 		files,
+		allFiles,
+		unchangedFiles,
+		fileInfos,
 		pluginIds,
 		pluginVersionDiffs,
 		meta,
 		deviceId,
 		deviceName: deviceName || currentDeviceName || "Unknown device",
 		groups,
+		allGroups,
 	};
 }
 

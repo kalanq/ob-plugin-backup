@@ -127,11 +127,26 @@ export class RestoreManager {
 			const now = new Date();
 			const timestamp = now.toISOString().replace(/[:.]/g, "-");
 			const configPath = this.getConfigPath();
+			const preview = createRestorePreview(
+				backupPath,
+				configPath,
+				getConfigDirName(this.app),
+				null,
+				this.settings.deviceId,
+				this.settings.deviceName,
+			);
+			const restoredWarnings = selectedRelativePaths
+				.flatMap((selectedPath) => preview.fileInfos[selectedPath]?.pathWarnings
+					.map((warning) => `${selectedPath} ${warning.jsonPath}: ${warning.value}${warning.existsOnThisDevice ? "" : " (not found on this device)"}`)
+					|| []);
 
 			this.createLocalSafetySnapshot(configPath, timestamp);
 			copySelectedRestoreFiles(backupPath, configPath, selectedRelativePaths);
 
-			new Notice("Plugin Backup: Restore completed. Please reload Obsidian.", 8000);
+			const warningGuide = restoredWarnings.length
+				? `\nReview device-specific paths:\n${restoredWarnings.slice(0, 5).join("\n")}${restoredWarnings.length > 5 ? `\n...and ${restoredWarnings.length - 5} more` : ""}`
+				: "";
+			new Notice(`Plugin Backup: Restore completed. Please reload Obsidian.${warningGuide}`, 12000);
 		} catch (err: any) {
 			new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
 			throw err;
@@ -179,6 +194,7 @@ class RestoreConfirmModal extends Modal {
 	private preview: RestorePreview;
 	private selectedPaths: Set<string>;
 	private onConfirm: (selectedPaths: string[]) => Promise<void>;
+	private showUnchangedFiles = false;
 
 	constructor(
 		app: App,
@@ -203,6 +219,29 @@ class RestoreConfirmModal extends Modal {
 			text: `Safety check: this will overwrite selected files in ${this.preview.configDirName}. Please manually back up your Obsidian config folder before continuing.`,
 		});
 
+		const warningCount = Object.values(this.preview.fileInfos)
+			.reduce((count, info) => count + info.pathWarnings.length, 0);
+		if (this.preview.unchangedFiles.length > 0 || warningCount > 0) {
+			const summary = [
+				this.preview.unchangedFiles.length > 0 ? `${this.preview.unchangedFiles.length} unchanged files hidden by default` : "",
+				warningCount > 0 ? `${warningCount} absolute path warning(s)` : "",
+			].filter(Boolean).join("; ");
+			contentEl.createEl("p", { text: summary });
+		}
+
+		if (this.preview.unchangedFiles.length > 0) {
+			new Setting(contentEl)
+				.setName("Show unchanged files")
+				.setDesc("Default view shows only files that differ from this vault or are missing locally.")
+				.addToggle((toggle) => {
+					toggle.setValue(this.showUnchangedFiles);
+					toggle.onChange((value) => {
+						this.showUnchangedFiles = value;
+						this.onOpen();
+					});
+				});
+		}
+
 		this.renderDeviceGroups(contentEl);
 		this.renderActions(contentEl);
 	}
@@ -215,7 +254,8 @@ class RestoreConfirmModal extends Modal {
 	}
 
 	private renderDeviceGroups(containerEl: HTMLElement): void {
-		for (const deviceGroup of this.preview.groups) {
+		const groups = this.showUnchangedFiles ? this.preview.allGroups : this.preview.groups;
+		for (const deviceGroup of groups) {
 			const details = containerEl.createEl("details");
 			details.open = deviceGroup.isCurrentDevice || this.preview.groups.length === 1;
 			const selectedCount = deviceGroup.files.filter((file) => this.selectedPaths.has(file)).length;
@@ -269,8 +309,16 @@ class RestoreConfirmModal extends Modal {
 		}
 
 		for (const file of category.files) {
+			const info = this.preview.fileInfos[file];
+			const status = info?.status && info.status !== "same" ? ` (${info.status})` : "";
+			const warningText = info?.pathWarnings?.length
+				? `Absolute paths: ${info.pathWarnings.map((warning) =>
+					`${warning.jsonPath} = ${warning.value}${warning.existsOnThisDevice ? "" : " (not found on this device)"}`
+				).join("; ")}`
+				: "";
 			new Setting(details)
-				.setName(file)
+				.setName(`${file}${status}${info?.pathWarnings?.length ? " [absolute path]" : ""}`)
+				.setDesc(warningText)
 				.addToggle((toggle) => {
 					toggle.setValue(this.selectedPaths.has(file));
 					toggle.onChange((value) => this.setFilesSelected([file], value));

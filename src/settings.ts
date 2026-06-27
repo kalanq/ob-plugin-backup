@@ -262,7 +262,7 @@ const CATEGORY_TRANSLATIONS: Record<SupportedLanguage, Record<string, { label: s
 	en: {
 		backupAppearance: { label: "Appearance & Theme", description: "appearance.json, themes/, snippets/" },
 		backupHotkeys: { label: "Custom Hotkeys", description: "hotkeys.json" },
-		backupCorePlugins: { label: "Core Plugins", description: "core-plugins.json" },
+		backupCorePlugins: { label: "Core Plugins", description: "core plugin enablement plus user settings such as daily-notes.json and templates.json" },
 		backupCommunityPlugins: { label: "Community Plugins", description: "community-plugins.json, all plugin files" },
 		backupAppSettings: { label: "App Settings", description: "app.json (editor, links, files)" },
 		backupBookmarks: { label: "Bookmarks", description: "bookmarks.json" },
@@ -271,7 +271,7 @@ const CATEGORY_TRANSLATIONS: Record<SupportedLanguage, Record<string, { label: s
 	zh: {
 		backupAppearance: { label: "外观与主题", description: "appearance.json、themes/、snippets/" },
 		backupHotkeys: { label: "自定义快捷键", description: "hotkeys.json" },
-		backupCorePlugins: { label: "核心插件", description: "core-plugins.json" },
+		backupCorePlugins: { label: "核心插件", description: "核心插件启用状态，以及 daily-notes.json、templates.json 等用户设置" },
 		backupCommunityPlugins: { label: "社区插件", description: "community-plugins.json 和插件文件" },
 		backupAppSettings: { label: "应用设置", description: "app.json（编辑器、链接、文件等）" },
 		backupBookmarks: { label: "书签", description: "bookmarks.json" },

@@ -67,6 +67,8 @@ const archiveBackup = path.join(OUT_DIR, "backup.zip");
 
 writeJson(path.join(config, "app.json"), { value: "local-app" });
 writeJson(path.join(config, "hotkeys.json"), { value: "local-hotkeys" });
+writeJson(path.join(config, "daily-notes.json"), { folder: "Daily", template: "Templates/Daily" });
+writeJson(path.join(config, "templates.json"), { folder: "Templates" });
 writeJson(path.join(config, "plugins", "plugin-a", "manifest.json"), {
 	id: "plugin-a",
 	name: "Plugin A",
@@ -85,12 +87,17 @@ writeJson(path.join(config, "plugins", "ob-plugin-backup", "data.json"), {
 
 writeJson(path.join(backup, "app.json"), { value: "backup-app" });
 writeJson(path.join(backup, "hotkeys.json"), { value: "backup-hotkeys" });
+writeJson(path.join(backup, "daily-notes.json"), { folder: "Daily", template: "Templates/Daily" });
+writeJson(path.join(backup, "templates.json"), { folder: "Remote/Templates" });
 writeJson(path.join(backup, "plugins", "plugin-a", "manifest.json"), {
 	id: "plugin-a",
 	name: "Plugin A",
 	version: "2.0.0",
 });
-writeJson(path.join(backup, "plugins", "plugin-a", "data.json"), { value: "backup-plugin" });
+writeJson(path.join(backup, "plugins", "plugin-a", "data.json"), {
+	value: "backup-plugin",
+	toolPath: "C:\\Missing\\tool.exe",
+});
 writeText(path.join(backup, "index.html"), "<html><body>runtime entry</body></html>");
 writeText(path.join(backup, "copilot-index-abc123.json"), "{\"cache\":true}");
 writeText(path.join(backup, "plugins", "plugin-a", "index.html"), "<html><body>plugin asset</body></html>");
@@ -150,6 +157,9 @@ writeZip(archiveBackup, {
 console.log("=== Restore preview ===");
 const preview = createRestorePreview(backup, config, ".obsidian", null, "device-a", "Device A");
 assert(preview.files.includes("app.json"), "preview includes app.json");
+assert(!preview.files.includes("daily-notes.json"), "preview hides unchanged core plugin settings by default");
+assert(preview.unchangedFiles.includes("daily-notes.json"), "preview tracks unchanged files separately");
+assert(preview.files.includes("templates.json"), "preview includes changed core plugin settings");
 assert(preview.files.includes("plugins/plugin-a/data.json"), "preview includes plugin data");
 assert(!preview.files.includes("index.html"), "preview excludes root HTML runtime files");
 assert(!preview.files.includes("copilot-index-abc123.json"), "preview excludes generated root index cache files");
@@ -162,8 +172,11 @@ assert(preview.deviceId === "device-a", "preview records backup device id");
 assert(preview.groups.length === 1, "preview creates one device group");
 assert(preview.groups[0].isCurrentDevice === true, "preview marks current device group");
 assert(preview.groups[0].categories.some((group) => group.key === "communityPlugins"), "preview groups community plugin files");
+assert(preview.groups[0].categories.some((group) => group.key === "corePlugins"), "preview groups core plugin settings files");
 assert(preview.groups[0].categories.some((group) => group.key === "appSettings"), "preview groups app settings files");
 assert(preview.groups[0].categories.some((group) => group.key === "hotkeys"), "preview groups hotkey files");
+assert(preview.fileInfos["plugins/plugin-a/data.json"].pathWarnings.length === 1, "preview detects absolute path settings");
+assert(preview.fileInfos["plugins/plugin-a/data.json"].pathWarnings[0].jsonPath === "/toolPath", "preview records absolute path json pointer");
 
 console.log("\n=== Selective restore ===");
 copySelectedRestoreFiles(backup, config, ["app.json", "plugins/plugin-a/data.json", "index.html", "copilot-index-abc123.json", "../escape.txt"]);

@@ -72,6 +72,7 @@ GitHub also provides automatic source code archives on each release. They are so
 4. Keep the default archive zip format unless you need the legacy loose-file directory layout.
 5. Create the first backup manually.
 6. Use "Create Local Safety Snapshot" when you only want a local rollback point and do not want to update the synced backup.
+7. Restore dialogs show changed or missing files by default and mark JSON settings that contain absolute local paths.
 
 ## Multi-device retention note
 
