@@ -16,7 +16,9 @@ A lightweight plugin for backing up and syncing Obsidian configurations, plugins
 *   **Dual-Directory System**:
     *   `ob-plugin-backup/`: Sync directory (visible to NAS for multi-device syncing).
     *   `.ob-plugin-backup-local/`: Dot-prefixed local backup directory (ignored by NAS, used for local emergency recovery).
+*   **Local-Only Safety Snapshot**: Create a local emergency snapshot without updating the NAS-visible latest backup or sync history.
 *   **Version History**: Customize retention counts for versioned snapshots.
+    *   In multi-device sync, the shared sync history is pruned by whichever device writes a backup. The effective shared history limit is the smallest sync-retention setting used on any device.
 *   **Failed Backup Cleanup**: Stale `latest.tmp-*` folders from interrupted backups are removed automatically on later backup runs.
 *   **Safe Incremental Restore**: Restoring will only overwrite configuration files included in the backup. It will **not** delete any new plugins you installed locally.
 *   **Automation**: Supports auto-backup on startup and scheduled interval backups.
@@ -59,6 +61,7 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
     *   Select categories you want to backup (Appearance, Hotkeys, Core Plugins, Community Plugins, etc.).
 2.  **Manual Backup**:
     *   Run command `Plugin Backup: Create Backup` or click **Backup** in the settings panel.
+    *   Run command `Plugin Backup: Create Local Safety Snapshot` when you only want a local rollback point and do not want to update the synced backup.
 3.  **Check for Changes**:
     *   Click the status bar item or run `Plugin Backup: Check for Changes` to check configuration differences.
 4.  **Restore**:
@@ -79,7 +82,9 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
 *   **双目录安全备份**：
     *   `ob-plugin-backup/`：同步目录（NAS可见并进行多端同步）。
     *   `.ob-plugin-backup-local/`：以 `.` 开头的本地安全快照目录（NAS会自动跳过，用于发生意外时在本地还原历史）。
+*   **仅本地安全快照**：可以只创建本地紧急恢复快照，不更新 NAS 可见的最新备份或同步历史。
 *   **版本历史与保留**：支持自定义历史版本保留数量，可从任意历史节点恢复。
+    *   多端同步时，共享同步历史会被“执行写入备份的那台设备”按本机设置清理；实际共享历史数量会受到所有设备中最小同步历史保留值限制。
 *   **失败备份清理**：中断备份留下的旧 `latest.tmp-*` 临时目录会在后续备份时自动清理。
 *   **增量覆盖恢复**：恢复过程只会覆盖备份中存在的文件，不会删除您本地后来安装的新插件。
 *   **自动与定时任务**：支持启动时自动备份、定时自动备份。
@@ -118,6 +123,7 @@ On Windows, double-click `install-plugin.cmd` from the release folder and choose
     *   勾选您需要备份的范围（如外观设置、快捷键、核心/社区插件清单及插件配置等）。
 2.  **手动备份**：
     *   在命令面板中运行 `Plugin Backup: Create Backup` 命令，或在设置面板中点击 **Backup** 按钮。
+    *   如果只想创建本机回滚点、不想更新同步备份，可运行 `Plugin Backup: Create Local Safety Snapshot`。
 3.  **检查变更**：
     *   点击状态栏右下角的 `Plugin Backup` 图标，或运行 `Plugin Backup: Check for Changes`，即可查看当前配置与最新备份的差异文件列表。
 4.  **从备份恢复**：

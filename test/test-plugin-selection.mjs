@@ -224,6 +224,20 @@ const localSnapshotEntries = readZipEntries(createdLocalSnapshot);
 assert(!localSnapshotEntries.has("index.html"), "local safety snapshot excludes root HTML runtime files");
 assert(!localSnapshotEntries.has("copilot-index-abc123.json"), "local safety snapshot excludes generated root index cache files");
 
+console.log("\n=== Local-only safety snapshot ===");
+const syncHistoryDir = path.join(vault, "meta", "ob-plugin-backup", "history");
+const syncHistoryBeforeLocalOnly = fs.readdirSync(syncHistoryDir).sort().join(",");
+const syncMetaPath = path.join(vault, "meta", "ob-plugin-backup", "meta.json");
+const syncMetaBeforeLocalOnly = fs.readFileSync(syncMetaPath, "utf8");
+const localOnlySnapshotPath = await manager.createLocalSnapshotOnly();
+assert(fs.existsSync(localOnlySnapshotPath), "local-only snapshot is created");
+assert(localOnlySnapshotPath.includes(".ob-plugin-backup-local"), "local-only snapshot stays in local safety directory");
+assert(fs.readdirSync(syncHistoryDir).sort().join(",") === syncHistoryBeforeLocalOnly, "local-only snapshot does not create sync history");
+assert(fs.readFileSync(syncMetaPath, "utf8") === syncMetaBeforeLocalOnly, "local-only snapshot does not update sync meta.json");
+const localOnlySnapshotEntries = readZipEntries(localOnlySnapshotPath);
+assert(localOnlySnapshotEntries.has("plugins/plugin-a/manifest.json"), "local-only snapshot captures current config files");
+assert(!localOnlySnapshotEntries.has("index.html"), "local-only snapshot excludes root HTML runtime files");
+
 console.log("\n=== BackupManager honors custom configDir ===");
 const customVault = path.join(OUT_DIR, "custom-vault");
 const customConfig = path.join(customVault, ".custom-obsidian");

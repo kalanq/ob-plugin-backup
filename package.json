@@ -1,6 +1,6 @@
 {
   "name": "ob-plugin-backup",
-  "version": "0.1.6-beta",
+  "version": "0.1.7-beta",
   "description": "Backup and sync Obsidian settings, plugins, themes and hotkeys across devices",
   "main": "main.js",
   "scripts": {

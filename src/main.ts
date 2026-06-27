@@ -72,6 +72,10 @@ export default class AddonBackupPlugin extends Plugin {
 		}
 	}
 
+	async createLocalSnapshot() {
+		return this.backupManager.createLocalSnapshotOnly();
+	}
+
 	private registerCommands() {
 		this.addCommand({
 			id: COMMANDS.CREATE_BACKUP,
@@ -85,6 +89,19 @@ export default class AddonBackupPlugin extends Plugin {
 				} catch (err: any) {
 					this.updateStatus("error");
 					new Notice(`Plugin Backup: Backup failed - ${err.message}`, 5000);
+				}
+			},
+		});
+
+		this.addCommand({
+			id: COMMANDS.CREATE_LOCAL_SNAPSHOT,
+			name: "Create Local Safety Snapshot",
+			callback: async () => {
+				try {
+					const snapshotPath = await this.createLocalSnapshot();
+					new Notice(`Plugin Backup: Local snapshot created.\n${snapshotPath}`, 8000);
+				} catch (err: any) {
+					new Notice(`Plugin Backup: Local snapshot failed - ${err.message}`, 5000);
 				}
 			},
 		});

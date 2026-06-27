@@ -69,6 +69,9 @@ type TranslationKey =
 	| "createBackupNow"
 	| "createBackupNowDesc"
 	| "backup"
+	| "createLocalSnapshotNow"
+	| "createLocalSnapshotNowDesc"
+	| "localSnapshot"
 	| "restoreFromBackup"
 	| "restoreFromBackupDesc"
 	| "browseVersions"
@@ -82,7 +85,9 @@ type TranslationKey =
 	| "windowsInstallerDesc"
 	| "windowsOnly"
 	| "backupSuccess"
+	| "localSnapshotSuccess"
 	| "backupFailed"
+	| "localSnapshotFailed"
 	| "restoreFailed"
 	| "checkFailed";
 
@@ -140,13 +145,16 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		checkChangesOnStartupDesc: "Compare current config with backup and notify if there are differences",
 		historyRetention: "History Retention",
 		syncHistoryRetention: "Sync history retention",
-		syncHistoryRetentionDesc: "Number of versioned snapshots to keep in the sync folder (NAS synced)",
+		syncHistoryRetentionDesc: "Number of versioned snapshots to keep in the sync folder. Each device prunes shared sync history after it writes a backup, so multi-device sync is effectively limited by the smallest value used on any device.",
 		localSafetyRetention: "Local safety retention",
 		localSafetyRetentionDesc: "Number of local snapshots to keep (not synced, for emergency recovery)",
 		manualActions: "Manual Actions",
 		createBackupNow: "Create backup now",
-		createBackupNowDesc: "Backup current config to sync folder + local safety snapshot",
+		createBackupNowDesc: "Write current config to the sync folder and also create a local safety snapshot.",
 		backup: "Backup",
+		createLocalSnapshotNow: "Create local snapshot now",
+		createLocalSnapshotNowDesc: "Create a local safety snapshot only. This does not update latest backup, sync history, or NAS-visible files.",
+		localSnapshot: "Local Snapshot",
 		restoreFromBackup: "Restore from backup",
 		restoreFromBackupDesc: "Choose a version from sync history or local snapshots to restore",
 		browseVersions: "Browse Versions",
@@ -160,7 +168,9 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		windowsInstallerDesc: "The release package includes install-plugin.cmd and install-plugin.ps1 for Windows double-click installation on another computer.",
 		windowsOnly: "Windows only",
 		backupSuccess: "Plugin Backup: Backup created successfully.",
+		localSnapshotSuccess: "Plugin Backup: Local snapshot created.",
 		backupFailed: "Plugin Backup: Backup failed",
+		localSnapshotFailed: "Plugin Backup: Local snapshot failed",
 		restoreFailed: "Plugin Backup: Restore failed",
 		checkFailed: "Plugin Backup: Check failed",
 	},
@@ -217,13 +227,16 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		checkChangesOnStartupDesc: "启动时比较当前配置和备份，如有差异则提示。",
 		historyRetention: "历史保留",
 		syncHistoryRetention: "同步历史保留数量",
-		syncHistoryRetentionDesc: "同步目录中保留的历史快照数量（会被 NAS 同步）。",
+		syncHistoryRetentionDesc: "同步目录中保留的历史快照数量。每台设备写入同步备份后都会清理共享同步历史；多端同步时，实际可保留数量会受到所有设备中最小设置值限制。",
 		localSafetyRetention: "本地安全快照保留数量",
 		localSafetyRetentionDesc: "本地快照保留数量（不会同步，用于紧急恢复）。",
 		manualActions: "手动操作",
 		createBackupNow: "立即创建备份",
-		createBackupNowDesc: "将当前配置备份到同步目录，并创建本地安全快照。",
+		createBackupNowDesc: "将当前配置写入同步目录，并同时创建本地安全快照。",
 		backup: "备份",
+		createLocalSnapshotNow: "立即创建本地快照",
+		createLocalSnapshotNowDesc: "只创建本地安全快照，不更新最新同步备份、同步历史或 NAS 可见文件。",
+		localSnapshot: "本地快照",
 		restoreFromBackup: "从备份恢复",
 		restoreFromBackupDesc: "从同步历史或本地快照中选择一个版本恢复。",
 		browseVersions: "浏览版本",
@@ -237,7 +250,9 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		windowsInstallerDesc: "发布包包含 install-plugin.cmd 和 install-plugin.ps1，可在 Windows 上双击安装到另一台电脑。",
 		windowsOnly: "仅 Windows",
 		backupSuccess: "Plugin Backup：备份创建成功。",
+		localSnapshotSuccess: "Plugin Backup：本地快照创建成功。",
 		backupFailed: "Plugin Backup：备份失败",
+		localSnapshotFailed: "Plugin Backup：本地快照创建失败",
 		restoreFailed: "Plugin Backup：恢复失败",
 		checkFailed: "Plugin Backup：检查失败",
 	},
@@ -272,6 +287,7 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 		diffChecker: DiffChecker;
 		scheduler: BackupScheduler;
 		createBackup: () => Promise<void>;
+		createLocalSnapshot: () => Promise<string>;
 		saveSettings: () => Promise<void>;
 	};
 	private settings: AddonBackupSettings;
@@ -566,6 +582,22 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 							new Notice(this.t("backupSuccess"));
 						} catch (err: any) {
 							new Notice(`${this.t("backupFailed")} - ${err.message}`, 5000);
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(this.t("createLocalSnapshotNow"))
+			.setDesc(this.t("createLocalSnapshotNowDesc"))
+			.addButton((btn) =>
+				btn
+					.setButtonText(this.t("localSnapshot"))
+					.onClick(async () => {
+						try {
+							const snapshotPath = await this.plugin.createLocalSnapshot();
+							new Notice(`${this.t("localSnapshotSuccess")}\n${snapshotPath}`, 8000);
+						} catch (err: any) {
+							new Notice(`${this.t("localSnapshotFailed")} - ${err.message}`, 5000);
 						}
 					})
 			);

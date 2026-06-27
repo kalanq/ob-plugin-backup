@@ -141,6 +141,20 @@ export class BackupManager {
 		}
 	}
 
+	async createLocalSnapshotOnly(): Promise<string> {
+		const localDir = this.getLocalSnapshotDir();
+		if (!localDir) {
+			throw new Error("Local safety snapshot path not configured");
+		}
+
+		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+		await this.createLocalSnapshot(this.getConfigPath(), timestamp, null);
+		this.cleanHistory(localDir, this.settings.localSnapshotRetentionCount);
+		return this.settings.backupFormat === "archive"
+			? path.join(localDir, `${timestamp}.zip`)
+			: path.join(localDir, timestamp);
+	}
+
 	private detectChanges(
 		oldHashes: Record<string, string>,
 		newHashes: Record<string, string>,
@@ -228,7 +242,7 @@ export class BackupManager {
 	private async createLocalSnapshot(
 		configPath: string,
 		timestamp: string,
-		meta: BackupMeta,
+		meta: BackupMeta | null,
 	): Promise<void> {
 		const localDir = this.getLocalSnapshotDir();
 		if (!localDir) return;
@@ -241,7 +255,9 @@ export class BackupManager {
 
 		const snapshotDir = path.join(localDir, timestamp);
 		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
-		fs.writeFileSync(path.join(snapshotDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
+		if (meta) {
+			fs.writeFileSync(path.join(snapshotDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
+		}
 	}
 
 	private copyDirRecursive(

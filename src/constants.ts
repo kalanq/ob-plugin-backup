@@ -29,6 +29,7 @@ export const BACKUP_CATEGORIES: BackupCategory[] = [
 
 export const COMMANDS = {
 	CREATE_BACKUP: "ob-plugin-backup-create-backup",
+	CREATE_LOCAL_SNAPSHOT: "ob-plugin-backup-create-local-snapshot",
 	RESTORE_LATEST: "ob-plugin-backup-restore-latest",
 	RESTORE_FROM_HISTORY: "ob-plugin-backup-restore-from-history",
 	CHECK_CHANGES: "ob-plugin-backup-check-changes",
