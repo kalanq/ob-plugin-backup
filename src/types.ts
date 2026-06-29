@@ -67,6 +67,7 @@ export interface BackupMeta {
 	version: string;
 	lastBackupTime: number;
 	lastBackupTimeStr: string;
+	comment?: string;
 	fileHashes: Record<string, string>;
 	changelog: string[];
 	pluginVersions: Record<string, string>;
@@ -95,8 +96,21 @@ export interface BackupCategory {
 export interface HistoryEntry {
 	timestamp: string;
 	displayName: string;
+	comment?: string;
 	changelog: string[];
 	pluginVersions: Record<string, string>;
+}
+
+export interface BackupOperationProgress {
+	stage: string;
+	current?: number;
+	total?: number;
+	detail?: string;
+}
+
+export interface BackupRunOptions {
+	comment?: string;
+	onProgress?: (progress: BackupOperationProgress) => void;
 }
 
 export interface InstalledCommunityPlugin {

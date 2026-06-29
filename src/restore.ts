@@ -1,5 +1,5 @@
 import { App, FuzzySuggestModal, Modal, Notice, Setting } from "obsidian";
-import type { AddonBackupSettings, PluginVersionDiff, RestoreCategoryGroup, RestorePluginGroup, RestorePreview } from "./types";
+import type { AddonBackupSettings, BackupMeta, PluginVersionDiff, RestoreCategoryGroup, RestorePluginGroup, RestorePreview } from "./types";
 import { BackupManager } from "./backup";
 import { getConfigDirName, getConfigPath } from "./path_utils";
 import { copySelectedRestoreFiles, createRestorePreview } from "./restore_plan";
@@ -39,43 +39,26 @@ export class RestoreManager {
 	}
 
 	async restoreFromHistory(): Promise<void> {
-		const syncHistory = this.backupManager.getHistoryList();
-		const localSnapshots = this.backupManager.getLocalSnapshotList();
+		const allEntries = await this.getVersionEntries(false);
 
-		if (syncHistory.length === 0 && localSnapshots.length === 0) {
+		if (allEntries.length === 0) {
 			new Notice("Plugin Backup: No history snapshots found.");
 			return;
-		}
-
-		const allEntries: Array<{
-			displayName: string;
-			path: string;
-			isLocal: boolean;
-			changelog: string[];
-		}> = [];
-
-		for (const entry of syncHistory) {
-			const deviceLabel = entry.meta?.deviceName ? ` [${entry.meta.deviceName}]` : "";
-			allEntries.push({
-				displayName: entry.displayName + deviceLabel + (entry.meta?.changelog?.length ? ` (${entry.meta.changelog.length} changes)` : ""),
-				path: path.join(this.backupManager.getSyncHistoryDir(), entry.timestamp),
-				isLocal: false,
-				changelog: entry.meta?.changelog || [],
-			});
-		}
-
-		for (const entry of localSnapshots) {
-			allEntries.push({
-				displayName: entry.displayName,
-				path: path.join(this.backupManager.getLocalSnapshotDirPublic(), entry.timestamp),
-				isLocal: true,
-				changelog: [],
-			});
 		}
 
 		new HistorySelectModal(this.app, allEntries, (selected) => {
 			this.openRestoreConfirmation(selected.path, null);
 		}).open();
+	}
+
+	async compareVersions(): Promise<void> {
+		const entries = await this.getVersionEntries(true);
+		const comparableEntries = entries.filter((entry) => entry.meta?.fileHashes);
+		if (comparableEntries.length < 2) {
+			new Notice("Plugin Backup: Need at least two versions to compare.");
+			return;
+		}
+		new VersionCompareModal(this.app, comparableEntries).open();
 	}
 
 	async openRestoreConfirmation(backupPath: string, fallbackMeta: any): Promise<void> {
@@ -169,6 +152,55 @@ export class RestoreManager {
 		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
 	}
 
+	private async getVersionEntries(includeLatest: boolean): Promise<VersionEntry[]> {
+		const entries: VersionEntry[] = [];
+
+		if (includeLatest) {
+			const latestPath = this.backupManager.getSyncLatestPath();
+			const latestMeta = await this.backupManager.readMeta();
+			if (fs.existsSync(latestPath) && latestMeta) {
+				entries.push({
+					displayName: this.formatVersionLabel("Latest", latestMeta, true),
+					path: latestPath,
+					isLocal: false,
+					changelog: latestMeta.changelog || [],
+					meta: latestMeta,
+				});
+			}
+		}
+
+		for (const entry of this.backupManager.getHistoryList()) {
+			entries.push({
+				displayName: this.formatVersionLabel(entry.displayName, entry.meta, false),
+				path: path.join(this.backupManager.getSyncHistoryDir(), entry.timestamp),
+				isLocal: false,
+				changelog: entry.meta?.changelog || [],
+				meta: entry.meta,
+			});
+		}
+
+		for (const entry of this.backupManager.getLocalSnapshotList()) {
+			entries.push({
+				displayName: this.formatVersionLabel(entry.displayName, entry.meta, false),
+				path: path.join(this.backupManager.getLocalSnapshotDirPublic(), entry.timestamp),
+				isLocal: true,
+				changelog: entry.meta?.changelog || [],
+				meta: entry.meta,
+			});
+		}
+
+		return entries;
+	}
+
+	private formatVersionLabel(prefix: string, meta: BackupMeta | null, latest: boolean): string {
+		const parts = [prefix];
+		if (meta?.deviceName) parts.push(`[${meta.deviceName}]`);
+		if (meta?.comment) parts.push(`- ${meta.comment}`);
+		if (latest) parts.push("(latest)");
+		else if (meta?.changelog?.length) parts.push(`(${meta.changelog.length} changes)`);
+		return parts.join(" ");
+	}
+
 	private copyDirRecursive(
 		src: string,
 		dest: string,
@@ -188,6 +220,14 @@ export class RestoreManager {
 			}
 		}
 	}
+}
+
+interface VersionEntry {
+	displayName: string;
+	path: string;
+	isLocal: boolean;
+	changelog: string[];
+	meta: BackupMeta | null;
 }
 
 class RestoreConfirmModal extends Modal {
@@ -416,22 +456,12 @@ class RestoreConfirmModal extends Modal {
 }
 
 class HistorySelectModal extends FuzzySuggestModal<string> {
-	private entries: Array<{
-		displayName: string;
-		path: string;
-		isLocal: boolean;
-		changelog: string[];
-	}>;
+	private entries: VersionEntry[];
 	private onSelect: (entry: { path: string }) => void;
 
 	constructor(
 		app: App,
-		entries: Array<{
-			displayName: string;
-			path: string;
-			isLocal: boolean;
-			changelog: string[];
-		}>,
+		entries: VersionEntry[],
 		onSelect: (entry: { path: string }) => void,
 	) {
 		super(app);
@@ -451,11 +481,120 @@ class HistorySelectModal extends FuzzySuggestModal<string> {
 	onChooseItem(item: string, evt: MouseEvent | KeyboardEvent): void {
 		const entry = this.entries.find((e) => e.displayName === item);
 		if (entry) {
+			const commentStr = entry.meta?.comment ? `\n\nComment:\n${entry.meta.comment}` : "";
 			const changelogStr = entry.changelog.length > 0
-				? "\n\nChanges:\n" + entry.changelog.join("\n")
+				? "\n\nChanges:\n" + entry.changelog.slice(0, 12).join("\n") + (entry.changelog.length > 12 ? `\n...and ${entry.changelog.length - 12} more` : "")
 				: "";
-			new Notice(`Plugin Backup: Selected ${item}${changelogStr}`, 8000);
+			new Notice(`Plugin Backup: Selected ${item}${commentStr}${changelogStr}`, 8000);
 			this.onSelect(entry);
 		}
 	}
+}
+
+class VersionCompareModal extends Modal {
+	private entries: VersionEntry[];
+	private fromIndex = 0;
+	private toIndex = 1;
+	private resultEl: HTMLElement | null = null;
+
+	constructor(app: App, entries: VersionEntry[]) {
+		super(app);
+		this.entries = entries;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		this.titleEl.setText("Compare Plugin Backup Versions");
+
+		new Setting(contentEl)
+			.setName("Base version")
+			.setDesc("Files removed here and present in target are shown as added.")
+			.addDropdown((dropdown) => {
+				this.entries.forEach((entry, index) => dropdown.addOption(String(index), entry.displayName));
+				dropdown.setValue(String(this.fromIndex));
+				dropdown.onChange((value) => {
+					this.fromIndex = parseInt(value);
+					this.renderResult();
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Target version")
+			.setDesc("Compare this version against the base version.")
+			.addDropdown((dropdown) => {
+				this.entries.forEach((entry, index) => dropdown.addOption(String(index), entry.displayName));
+				dropdown.setValue(String(this.toIndex));
+				dropdown.onChange((value) => {
+					this.toIndex = parseInt(value);
+					this.renderResult();
+				});
+			});
+
+		this.resultEl = contentEl.createDiv();
+		this.renderResult();
+	}
+
+	private renderResult(): void {
+		if (!this.resultEl) return;
+		this.resultEl.empty();
+		const from = this.entries[this.fromIndex];
+		const to = this.entries[this.toIndex];
+		if (!from || !to) return;
+		if (from === to) {
+			this.resultEl.createEl("p", { text: "Choose two different versions." });
+			return;
+		}
+
+		const changes = compareFileHashes(from.meta?.fileHashes || {}, to.meta?.fileHashes || {});
+		this.resultEl.createEl("p", {
+			text: `${changes.added.length} added, ${changes.modified.length} modified, ${changes.deleted.length} deleted.`,
+		});
+
+		if (from.meta?.comment || to.meta?.comment) {
+			this.resultEl.createEl("p", {
+				text: `Comments: ${from.meta?.comment || "(none)"} -> ${to.meta?.comment || "(none)"}`,
+			});
+		}
+
+		this.renderChangeGroup("Added", changes.added);
+		this.renderChangeGroup("Modified", changes.modified);
+		this.renderChangeGroup("Deleted", changes.deleted);
+	}
+
+	private renderChangeGroup(title: string, files: string[]): void {
+		if (!this.resultEl || files.length === 0) return;
+		const details = this.resultEl.createEl("details");
+		details.open = title !== "Deleted";
+		details.createEl("summary", { text: `${title} (${files.length})` });
+		for (const file of files.slice(0, 200)) {
+			details.createEl("div", { text: file });
+		}
+		if (files.length > 200) {
+			details.createEl("div", { text: `...and ${files.length - 200} more` });
+		}
+	}
+}
+
+function compareFileHashes(
+	fromHashes: Record<string, string>,
+	toHashes: Record<string, string>,
+): { added: string[]; modified: string[]; deleted: string[] } {
+	const added: string[] = [];
+	const modified: string[] = [];
+	const deleted: string[] = [];
+
+	for (const [file, hash] of Object.entries(toHashes)) {
+		if (!fromHashes[file]) added.push(file);
+		else if (fromHashes[file] !== hash) modified.push(file);
+	}
+	for (const file of Object.keys(fromHashes)) {
+		if (!toHashes[file]) deleted.push(file);
+	}
+
+	return {
+		added: added.sort(),
+		modified: modified.sort(),
+		deleted: deleted.sort(),
+	};
 }

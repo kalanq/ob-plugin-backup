@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import type { AddonBackupSettings, BackupFile, BackupMeta, FileChange } from "./types";
+import type { AddonBackupSettings, BackupFile, BackupMeta, BackupOperationProgress, BackupRunOptions, FileChange } from "./types";
 import {
 	BACKUP_DIR_NAME,
 	LATEST_DIR_NAME,
@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 
 const STALE_LATEST_TEMP_MAX_AGE_MS = 60 * 60 * 1000;
+const UI_YIELD_EVERY_FILES = 20;
 
 export class BackupManager {
 	private app: App;
@@ -54,7 +55,7 @@ export class BackupManager {
 		return root ? path.join(root, LOCAL_SNAPSHOT_DIR_NAME) : "";
 	}
 
-	async createBackup(): Promise<void> {
+	async createBackup(options: BackupRunOptions = {}): Promise<void> {
 		const syncDir = this.getSyncBackupDir();
 		if (!syncDir) {
 			throw new Error("Backup path not configured");
@@ -69,6 +70,7 @@ export class BackupManager {
 		const previousMeta = await this.readMeta();
 		const changes: string[] = [];
 
+		this.reportProgress(options, { stage: "Preparing backup" });
 		this.cleanStaleLatestTempDirs(syncDir);
 
 		try {
@@ -77,18 +79,16 @@ export class BackupManager {
 			}
 			fs.mkdirSync(tempLatestDir, { recursive: true });
 
+			this.reportProgress(options, { stage: "Collecting files" });
 			const backupFiles = collectBackupFiles(configPath, tempLatestDir, this.settings);
 
-			for (const file of backupFiles) {
-				fs.mkdirSync(path.dirname(file.dest), { recursive: true });
-				fs.copyFileSync(file.source, file.dest);
-			}
+			await this.copyBackupFiles(backupFiles, options, "Copying backup files");
 
 			if (this.settings.syncOwnPluginSettings) {
 				backupFiles.push(this.writeOwnPluginSettingsSnapshot(tempLatestDir));
 			}
 
-			const meta = this.buildMeta(backupFiles);
+			const meta = this.buildMeta(backupFiles, options.comment);
 
 			if (previousMeta) {
 				const detectedChanges = this.detectChanges(previousMeta.fileHashes, meta.fileHashes);
@@ -104,17 +104,22 @@ export class BackupManager {
 
 			const now = new Date();
 			const timestamp = now.toISOString().replace(/[:.]/g, "-");
+			this.reportProgress(options, { stage: "Writing sync history" });
 			await this.createSyncHistorySnapshot(syncDir, tempLatestDir, timestamp, meta);
-			await this.createLocalSnapshot(configPath, timestamp, meta);
+			this.reportProgress(options, { stage: "Writing local safety snapshot" });
+			await this.createLocalSnapshot(configPath, timestamp, meta, options);
 
 			fs.mkdirSync(syncDir, { recursive: true });
 			if (this.settings.backupFormat === "archive") {
+				this.reportProgress(options, { stage: "Compressing latest backup" });
 				writeArchiveFromDirectory(tempLatestDir, tempLatestArchive, meta);
+				this.reportProgress(options, { stage: "Replacing latest backup" });
 				this.replaceLatestArchive(syncDir, latestArchive, tempLatestArchive, latestDir);
 				if (fs.existsSync(tempLatestDir)) {
 					fs.rmSync(tempLatestDir, { recursive: true, force: true });
 				}
 			} else {
+				this.reportProgress(options, { stage: "Replacing latest backup" });
 				this.replaceLatestDir(syncDir, latestDir, tempLatestDir);
 				if (fs.existsSync(latestArchive)) {
 					fs.rmSync(latestArchive, { force: true });
@@ -122,6 +127,7 @@ export class BackupManager {
 			}
 			fs.writeFileSync(path.join(syncDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 
+			this.reportProgress(options, { stage: "Cleaning old history" });
 			this.cleanHistory(
 				path.join(syncDir, HISTORY_DIR_NAME),
 				this.settings.syncHistoryRetentionCount,
@@ -130,6 +136,7 @@ export class BackupManager {
 				this.getLocalSnapshotDir(),
 				this.settings.localSnapshotRetentionCount,
 			);
+			this.reportProgress(options, { stage: "Done" });
 		} catch (err) {
 			if (fs.existsSync(tempLatestDir)) {
 				fs.rmSync(tempLatestDir, { recursive: true, force: true });
@@ -141,18 +148,76 @@ export class BackupManager {
 		}
 	}
 
-	async createLocalSnapshotOnly(): Promise<string> {
+	private async copyBackupFiles(
+		backupFiles: BackupFile[],
+		options: BackupRunOptions,
+		stage: string,
+	): Promise<void> {
+		const total = backupFiles.length;
+		for (let index = 0; index < backupFiles.length; index++) {
+			const file = backupFiles[index];
+			this.reportProgress(options, {
+				stage,
+				current: index + 1,
+				total,
+				detail: file.relativePath,
+			});
+			fs.mkdirSync(path.dirname(file.dest), { recursive: true });
+			fs.copyFileSync(file.source, file.dest);
+			if (index % UI_YIELD_EVERY_FILES === UI_YIELD_EVERY_FILES - 1) {
+				await this.yieldToUi();
+			}
+		}
+	}
+
+	async createLocalSnapshotOnly(options: BackupRunOptions = {}): Promise<string> {
 		const localDir = this.getLocalSnapshotDir();
 		if (!localDir) {
 			throw new Error("Local safety snapshot path not configured");
 		}
 
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		await this.createLocalSnapshot(this.getConfigPath(), timestamp, null);
+		this.reportProgress(options, { stage: "Preparing local snapshot" });
+		const meta = this.buildMeta(this.collectSafeConfigFiles(this.getConfigPath(), ""), options.comment);
+		meta.changelog = ["+ Local safety snapshot"];
+		await this.createLocalSnapshot(this.getConfigPath(), timestamp, meta, options);
+		this.reportProgress(options, { stage: "Cleaning old local snapshots" });
 		this.cleanHistory(localDir, this.settings.localSnapshotRetentionCount);
+		this.reportProgress(options, { stage: "Done" });
 		return this.settings.backupFormat === "archive"
 			? path.join(localDir, `${timestamp}.zip`)
 			: path.join(localDir, timestamp);
+	}
+
+	private collectSafeConfigFiles(sourceRoot: string, destRoot: string): BackupFile[] {
+		const files: BackupFile[] = [];
+		const walk = (dir: string, prefix: string) => {
+			if (!fs.existsSync(dir)) return;
+			const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a: any, b: any) => a.name.localeCompare(b.name));
+			for (const entry of entries) {
+				const source = path.join(dir, entry.name);
+				const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+				if (entry.isDirectory()) {
+					walk(source, relativePath);
+				} else if (entry.isFile() && isSafeConfigRelativePath(relativePath)) {
+					files.push({
+						source,
+						dest: destRoot ? path.join(destRoot, relativePath) : "",
+						relativePath,
+					});
+				}
+			}
+		};
+		walk(sourceRoot, "");
+		return files;
+	}
+
+	private reportProgress(options: BackupRunOptions, progress: BackupOperationProgress): void {
+		if (options.onProgress) options.onProgress(progress);
+	}
+
+	private async yieldToUi(): Promise<void> {
+		await new Promise((resolve) => setTimeout(resolve, 0));
 	}
 
 	private detectChanges(
@@ -175,7 +240,7 @@ export class BackupManager {
 		return changes;
 	}
 
-	private buildMeta(backupFiles: BackupFile[]): BackupMeta {
+	private buildMeta(backupFiles: BackupFile[], comment?: string): BackupMeta {
 		const now = new Date();
 		const fileHashes: Record<string, string> = {};
 		const pluginVersions: Record<string, string> = {};
@@ -198,6 +263,7 @@ export class BackupManager {
 			version: "1.0.0",
 			lastBackupTime: now.getTime(),
 			lastBackupTimeStr: now.toISOString(),
+			comment: comment?.trim() || undefined,
 			fileHashes,
 			changelog: [],
 			pluginVersions,
@@ -243,6 +309,7 @@ export class BackupManager {
 		configPath: string,
 		timestamp: string,
 		meta: BackupMeta | null,
+		options: BackupRunOptions = {},
 	): Promise<void> {
 		const localDir = this.getLocalSnapshotDir();
 		if (!localDir) return;
@@ -254,7 +321,8 @@ export class BackupManager {
 		}
 
 		const snapshotDir = path.join(localDir, timestamp);
-		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
+		const snapshotFiles = this.collectSafeConfigFiles(configPath, snapshotDir);
+		await this.copyBackupFiles(snapshotFiles, options, "Copying local snapshot files");
 		if (meta) {
 			fs.writeFileSync(path.join(snapshotDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 		}
@@ -449,7 +517,7 @@ export class BackupManager {
 		});
 	}
 
-	getLocalSnapshotList(): Array<{ timestamp: string; displayName: string }> {
+	getLocalSnapshotList(): Array<{ timestamp: string; displayName: string; meta: BackupMeta | null }> {
 		const localDir = this.getLocalSnapshotDir();
 		if (!fs.existsSync(localDir)) return [];
 
@@ -457,10 +525,27 @@ export class BackupManager {
 			.filter((entry: string) => entry.endsWith(".zip") || fs.statSync(path.join(localDir, entry)).isDirectory())
 			.sort()
 			.reverse();
-		return entries.map((entry: string) => ({
-			timestamp: entry,
-			displayName: "Local: " + this.formatTimestamp(entry.endsWith(".zip") ? entry.slice(0, -4) : entry),
-		}));
+		return entries.map((entry: string) => {
+			const backupPath = path.join(localDir, entry);
+			const timestamp = entry.endsWith(".zip") ? entry.slice(0, -4) : entry;
+			let meta: BackupMeta | null = null;
+			try {
+				if (isArchiveBackupPath(backupPath)) {
+					const archiveMeta = readArchiveText(backupPath, META_FILE_NAME);
+					if (archiveMeta) meta = this.normalizeMeta(JSON.parse(archiveMeta));
+				} else {
+					const metaPath = path.join(backupPath, META_FILE_NAME);
+					if (fs.existsSync(metaPath)) {
+						meta = this.normalizeMeta(JSON.parse(fs.readFileSync(metaPath, "utf8")));
+					}
+				}
+			} catch {}
+			return {
+				timestamp: entry,
+				displayName: "Local: " + this.formatTimestamp(timestamp),
+				meta,
+			};
+		});
 	}
 
 	private formatTimestamp(ts: string): string {

@@ -8,6 +8,8 @@ import { DiffChecker } from "./diff";
 import { BackupScheduler } from "./scheduler";
 import { AddonBackupSettingTab } from "./settings";
 import { ensureDeviceIdentity } from "./device_utils";
+import { BackupProgressModal, promptForBackupComment } from "./operation_ui";
+import type { BackupRunOptions } from "./types";
 
 export default class AddonBackupPlugin extends Plugin {
 	settings!: AddonBackupSettings;
@@ -60,8 +62,8 @@ export default class AddonBackupPlugin extends Plugin {
 		this.diffChecker.updateSettings(this.settings);
 	}
 
-	async createBackup() {
-		await this.backupManager.createBackup();
+	async createBackup(options: BackupRunOptions = {}) {
+		await this.backupManager.createBackup(options);
 		if (!this.settings.firstBackupCompleted || !this.settings.initialSetupCompleted) {
 			this.settings.firstBackupCompleted = true;
 			this.settings.initialSetupCompleted = true;
@@ -72,8 +74,8 @@ export default class AddonBackupPlugin extends Plugin {
 		}
 	}
 
-	async createLocalSnapshot() {
-		return this.backupManager.createLocalSnapshotOnly();
+	async createLocalSnapshot(options: BackupRunOptions = {}) {
+		return this.backupManager.createLocalSnapshotOnly(options);
 	}
 
 	private registerCommands() {
@@ -81,14 +83,23 @@ export default class AddonBackupPlugin extends Plugin {
 			id: COMMANDS.CREATE_BACKUP,
 			name: "Create Backup",
 			callback: async () => {
+				const comment = await promptForBackupComment(this.app, "Create Plugin Backup", "Why are you making this backup?");
+				if (comment === null) return;
+				const progress = new BackupProgressModal(this.app, "Creating Plugin Backup");
 				try {
 					this.updateStatus("syncing");
-					await this.createBackup();
+					progress.open();
+					await this.createBackup({
+						comment,
+						onProgress: (value) => progress.update(value),
+					});
 					this.updateStatus("synced");
 					new Notice("Plugin Backup: Backup created successfully.");
 				} catch (err: any) {
 					this.updateStatus("error");
 					new Notice(`Plugin Backup: Backup failed - ${err.message}`, 5000);
+				} finally {
+					progress.close();
 				}
 			},
 		});
@@ -97,11 +108,20 @@ export default class AddonBackupPlugin extends Plugin {
 			id: COMMANDS.CREATE_LOCAL_SNAPSHOT,
 			name: "Create Local Safety Snapshot",
 			callback: async () => {
+				const comment = await promptForBackupComment(this.app, "Create Local Safety Snapshot", "What local state should this snapshot remember?");
+				if (comment === null) return;
+				const progress = new BackupProgressModal(this.app, "Creating Local Safety Snapshot");
 				try {
-					const snapshotPath = await this.createLocalSnapshot();
+					progress.open();
+					const snapshotPath = await this.createLocalSnapshot({
+						comment,
+						onProgress: (value) => progress.update(value),
+					});
 					new Notice(`Plugin Backup: Local snapshot created.\n${snapshotPath}`, 8000);
 				} catch (err: any) {
 					new Notice(`Plugin Backup: Local snapshot failed - ${err.message}`, 5000);
+				} finally {
+					progress.close();
 				}
 			},
 		});

@@ -8,6 +8,8 @@ import { BackupScheduler } from "./scheduler";
 import { getConfigPath } from "./path_utils";
 import { getInstalledCommunityPlugins } from "./file_utils";
 import { createDeviceId } from "./device_utils";
+import { BackupProgressModal, promptForBackupComment } from "./operation_ui";
+import type { BackupRunOptions } from "./types";
 
 type TranslationKey =
 	| "title"
@@ -78,6 +80,9 @@ type TranslationKey =
 	| "restoreLatestBackup"
 	| "restoreLatestBackupDesc"
 	| "restoreLatest"
+	| "compareVersions"
+	| "compareVersionsDesc"
+	| "compare"
 	| "checkForChanges"
 	| "checkForChangesDesc"
 	| "check"
@@ -161,6 +166,9 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		restoreLatestBackup: "Restore latest backup",
 		restoreLatestBackupDesc: "Quick restore from the latest sync backup",
 		restoreLatest: "Restore Latest",
+		compareVersions: "Compare backup versions",
+		compareVersionsDesc: "Compare two backup or local snapshot versions by saved file hashes.",
+		compare: "Compare",
 		checkForChanges: "Check for changes",
 		checkForChangesDesc: "Compare current config with latest backup",
 		check: "Check",
@@ -243,6 +251,9 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		restoreLatestBackup: "恢复最新备份",
 		restoreLatestBackupDesc: "从最新同步备份快速恢复。",
 		restoreLatest: "恢复最新",
+		compareVersions: "比较备份版本",
+		compareVersionsDesc: "通过保存的文件哈希比较两个同步备份或本地快照版本。",
+		compare: "比较",
 		checkForChanges: "检查变更",
 		checkForChangesDesc: "比较当前配置和最新备份。",
 		check: "检查",
@@ -286,8 +297,8 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 		restoreManager: RestoreManager;
 		diffChecker: DiffChecker;
 		scheduler: BackupScheduler;
-		createBackup: () => Promise<void>;
-		createLocalSnapshot: () => Promise<string>;
+		createBackup: (options?: BackupRunOptions) => Promise<void>;
+		createLocalSnapshot: (options?: BackupRunOptions) => Promise<string>;
 		saveSettings: () => Promise<void>;
 	};
 	private settings: AddonBackupSettings;
@@ -577,11 +588,20 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 					.setButtonText(this.t("backup"))
 					.setClass("mod-cta")
 					.onClick(async () => {
+						const comment = await promptForBackupComment(this.app, this.t("createBackupNow"), "What changed in this backup?");
+						if (comment === null) return;
+						const progress = new BackupProgressModal(this.app, this.t("createBackupNow"));
 						try {
-							await this.plugin.createBackup();
+							progress.open();
+							await this.plugin.createBackup({
+								comment,
+								onProgress: (value) => progress.update(value),
+							});
 							new Notice(this.t("backupSuccess"));
 						} catch (err: any) {
 							new Notice(`${this.t("backupFailed")} - ${err.message}`, 5000);
+						} finally {
+							progress.close();
 						}
 					})
 			);
@@ -593,11 +613,20 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 				btn
 					.setButtonText(this.t("localSnapshot"))
 					.onClick(async () => {
+						const comment = await promptForBackupComment(this.app, this.t("createLocalSnapshotNow"), "What local state should this snapshot remember?");
+						if (comment === null) return;
+						const progress = new BackupProgressModal(this.app, this.t("createLocalSnapshotNow"));
 						try {
-							const snapshotPath = await this.plugin.createLocalSnapshot();
+							progress.open();
+							const snapshotPath = await this.plugin.createLocalSnapshot({
+								comment,
+								onProgress: (value) => progress.update(value),
+							});
 							new Notice(`${this.t("localSnapshotSuccess")}\n${snapshotPath}`, 8000);
 						} catch (err: any) {
 							new Notice(`${this.t("localSnapshotFailed")} - ${err.message}`, 5000);
+						} finally {
+							progress.close();
 						}
 					})
 			);
@@ -630,6 +659,21 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 							await this.plugin.restoreManager.restoreLatest();
 						} catch (err: any) {
 							new Notice(`${this.t("restoreFailed")} - ${err.message}`, 5000);
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(this.t("compareVersions"))
+			.setDesc(this.t("compareVersionsDesc"))
+			.addButton((btn) =>
+				btn
+					.setButtonText(this.t("compare"))
+					.onClick(async () => {
+						try {
+							await this.plugin.restoreManager.compareVersions();
+						} catch (err: any) {
+							new Notice(`${this.t("checkFailed")} - ${err.message}`, 5000);
 						}
 					})
 			);
