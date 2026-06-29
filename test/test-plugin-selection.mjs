@@ -260,6 +260,16 @@ const localOnlySnapshotMap = unzipSync(new Uint8Array(fs.readFileSync(localOnlyS
 const localOnlyMeta = JSON.parse(Buffer.from(localOnlySnapshotMap["meta.json"]).toString("utf8"));
 assert(localOnlyMeta.comment === "local experiment checkpoint", "local-only snapshot records comment");
 
+console.log("\n=== Pre-restore safety snapshot metadata ===");
+const preRestorePath = manager.createPreRestoreSnapshot("Plugin A rollback test");
+assert(preRestorePath && fs.existsSync(preRestorePath), "pre-restore snapshot is created");
+assert(preRestorePath.endsWith(".zip"), "pre-restore snapshot uses archive mode");
+const preRestoreMap = unzipSync(new Uint8Array(fs.readFileSync(preRestorePath)));
+const preRestoreMeta = JSON.parse(Buffer.from(preRestoreMap["meta.json"]).toString("utf8"));
+assert(preRestoreMeta.comment === "Before restore from Plugin A rollback test", "pre-restore snapshot records restore source comment");
+assert(preRestoreMeta.fileHashes["plugins/plugin-a/manifest.json"], "pre-restore snapshot records file hashes");
+assert(manager.getLatestPreRestoreSnapshotPath() === preRestorePath, "latest pre-restore snapshot is discoverable");
+
 console.log("\n=== BackupManager honors custom configDir ===");
 const customVault = path.join(OUT_DIR, "custom-vault");
 const customConfig = path.join(customVault, ".custom-obsidian");

@@ -57,6 +57,7 @@ export const COMMANDS = {
 	CREATE_LOCAL_SNAPSHOT: "ob-plugin-backup-create-local-snapshot",
 	RESTORE_LATEST: "ob-plugin-backup-restore-latest",
 	RESTORE_FROM_HISTORY: "ob-plugin-backup-restore-from-history",
+	RESTORE_LAST_PRE_RESTORE: "ob-plugin-backup-restore-last-pre-restore",
 	CHECK_CHANGES: "ob-plugin-backup-check-changes",
 };
 

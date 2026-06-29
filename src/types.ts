@@ -105,6 +105,9 @@ export interface BackupOperationProgress {
 	stage: string;
 	current?: number;
 	total?: number;
+	processedBytes?: number;
+	totalBytes?: number;
+	outputBytes?: number;
 	detail?: string;
 }
 

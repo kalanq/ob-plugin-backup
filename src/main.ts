@@ -153,6 +153,19 @@ export default class AddonBackupPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: COMMANDS.RESTORE_LAST_PRE_RESTORE,
+			name: "Restore Last Pre-Restore Snapshot",
+			callback: async () => {
+				try {
+					await this.restoreManager.restoreLastPreRestoreSnapshot();
+					await this.refreshStatus();
+				} catch (err: any) {
+					new Notice(`Plugin Backup: Restore failed - ${err.message}`, 5000);
+				}
+			},
+		});
+
+		this.addCommand({
 			id: COMMANDS.CHECK_CHANGES,
 			name: "Check for Changes",
 			callback: async () => {
@@ -256,6 +269,9 @@ class InitialSetupModal extends Modal {
 
 		contentEl.createEl("p", {
 			text: "Choose where backups should be stored before creating the first backup. The first backup must be started manually.",
+		});
+		contentEl.createEl("p", {
+			text: "Safety warning: manually back up your .obsidian folder once before using this plugin for restore operations.",
 		});
 
 		new Setting(contentEl)

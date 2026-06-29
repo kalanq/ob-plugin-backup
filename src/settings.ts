@@ -15,6 +15,7 @@ type TranslationKey =
 	| "title"
 	| "language"
 	| "languageDesc"
+	| "safetyWarning"
 	| "backupPaths"
 	| "currentDeviceName"
 	| "currentDeviceNameDesc"
@@ -77,6 +78,9 @@ type TranslationKey =
 	| "restoreFromBackup"
 	| "restoreFromBackupDesc"
 	| "browseVersions"
+	| "restoreLastPreRestore"
+	| "restoreLastPreRestoreDesc"
+	| "restorePreRestore"
 	| "restoreLatestBackup"
 	| "restoreLatestBackupDesc"
 	| "restoreLatest"
@@ -101,6 +105,7 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		title: "Plugin Backup Settings",
 		language: "Language",
 		languageDesc: "Switch the settings page between English and Chinese.",
+		safetyWarning: "Safety warning: manually back up your .obsidian folder once before using restore features. This plugin can overwrite Obsidian configuration files.",
 		backupPaths: "Backup Paths",
 		currentDeviceName: "Current device name",
 		currentDeviceNameDesc: "Used to label backups from this computer. You can rename it for easier restore filtering.",
@@ -163,6 +168,9 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		restoreFromBackup: "Restore from backup",
 		restoreFromBackupDesc: "Choose a version from sync history or local snapshots to restore",
 		browseVersions: "Browse Versions",
+		restoreLastPreRestore: "Restore last pre-restore snapshot",
+		restoreLastPreRestoreDesc: "Open the latest local pre-restore safety snapshot in the restore preview. Use this after an accidental restore.",
+		restorePreRestore: "Restore Safety Snapshot",
 		restoreLatestBackup: "Restore latest backup",
 		restoreLatestBackupDesc: "Quick restore from the latest sync backup",
 		restoreLatest: "Restore Latest",
@@ -186,6 +194,7 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		title: "Plugin Backup 设置",
 		language: "界面语言",
 		languageDesc: "在英文和中文之间切换插件设置页面。",
+		safetyWarning: "安全提醒：使用恢复功能前，请先手动备份一次 .obsidian 文件夹。本插件可能覆盖 Obsidian 配置文件。",
 		backupPaths: "备份路径",
 		currentDeviceName: "当前设备名称",
 		currentDeviceNameDesc: "用于标记这台电脑创建的备份。可以改成更容易识别的名字。",
@@ -248,6 +257,9 @@ const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = 
 		restoreFromBackup: "从备份恢复",
 		restoreFromBackupDesc: "从同步历史或本地快照中选择一个版本恢复。",
 		browseVersions: "浏览版本",
+		restoreLastPreRestore: "恢复最近一次恢复前快照",
+		restoreLastPreRestoreDesc: "在恢复预览中打开最近一次本地 pre-restore 安全快照。误恢复后可用它回滚。",
+		restorePreRestore: "恢复安全快照",
 		restoreLatestBackup: "恢复最新备份",
 		restoreLatestBackupDesc: "从最新同步备份快速恢复。",
 		restoreLatest: "恢复最新",
@@ -314,6 +326,7 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl("h2", { text: this.t("title") });
+		containerEl.createEl("p", { text: this.t("safetyWarning") });
 		this.renderLanguageSwitcher(containerEl);
 
 		this.renderSection(containerEl, this.t("backupPaths"), (sectionEl) => {
@@ -641,6 +654,22 @@ export class AddonBackupSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						try {
 							await this.plugin.restoreManager.restoreFromHistory();
+						} catch (err: any) {
+							new Notice(`${this.t("restoreFailed")} - ${err.message}`, 5000);
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(this.t("restoreLastPreRestore"))
+			.setDesc(this.t("restoreLastPreRestoreDesc"))
+			.addButton((btn) =>
+				btn
+					.setButtonText(this.t("restorePreRestore"))
+					.setWarning()
+					.onClick(async () => {
+						try {
+							await this.plugin.restoreManager.restoreLastPreRestoreSnapshot();
 						} catch (err: any) {
 							new Notice(`${this.t("restoreFailed")} - ${err.message}`, 5000);
 						}

@@ -31,7 +31,7 @@ export class BackupScheduler {
 		this.intervalId = window.setInterval(async () => {
 			if (this.restoreManager.isRestoring) return;
 			try {
-				await this.backupManager.createBackup();
+				await this.backupManager.createBackup({ comment: "Scheduled auto backup" });
 			} catch (err: any) {
 				console.error("Plugin Backup: Auto backup failed", err);
 			}
@@ -60,7 +60,7 @@ export class BackupScheduler {
 
 	async runStartupBackup(): Promise<void> {
 		try {
-			await this.backupManager.createBackup();
+			await this.backupManager.createBackup({ comment: "Auto backup on startup" });
 			new Notice("Plugin Backup: Startup backup completed.");
 		} catch (err: any) {
 			console.error("Plugin Backup: Startup backup failed", err);

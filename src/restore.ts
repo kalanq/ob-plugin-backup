@@ -3,8 +3,8 @@ import type { AddonBackupSettings, BackupMeta, PluginVersionDiff, RestoreCategor
 import { BackupManager } from "./backup";
 import { getConfigDirName, getConfigPath } from "./path_utils";
 import { copySelectedRestoreFiles, createRestorePreview } from "./restore_plan";
-import { isSafeConfigRelativePath } from "./safe_paths";
-import { writeArchiveFromDirectory } from "./archive_utils";
+import { isArchiveBackupPath, readArchiveText } from "./archive_utils";
+import { compareFileHashes, compareJsonStructure, type JsonStructureDiff } from "./version_compare";
 
 const fs = require("fs");
 const path = require("path");
@@ -61,6 +61,15 @@ export class RestoreManager {
 		new VersionCompareModal(this.app, comparableEntries).open();
 	}
 
+	async restoreLastPreRestoreSnapshot(): Promise<void> {
+		const snapshotPath = this.backupManager.getLatestPreRestoreSnapshotPath();
+		if (!snapshotPath || !fs.existsSync(snapshotPath)) {
+			new Notice("Plugin Backup: No pre-restore snapshot found.");
+			return;
+		}
+		await this.openRestoreConfirmation(snapshotPath, null);
+	}
+
 	async openRestoreConfirmation(backupPath: string, fallbackMeta: any): Promise<void> {
 		if (!fs.existsSync(backupPath)) {
 			new Notice("Plugin Backup: Backup path not found.");
@@ -107,8 +116,6 @@ export class RestoreManager {
 
 		this.isRestoring = true;
 		try {
-			const now = new Date();
-			const timestamp = now.toISOString().replace(/[:.]/g, "-");
 			const configPath = this.getConfigPath();
 			const preview = createRestorePreview(
 				backupPath,
@@ -123,7 +130,7 @@ export class RestoreManager {
 					.map((warning) => `${selectedPath} ${warning.jsonPath}: ${warning.value}${warning.existsOnThisDevice ? "" : " (not found on this device)"}`)
 					|| []);
 
-			this.createLocalSafetySnapshot(configPath, timestamp);
+			this.backupManager.createPreRestoreSnapshot(this.formatRestoreSourceLabel(backupPath, preview.meta));
 			copySelectedRestoreFiles(backupPath, configPath, selectedRelativePaths);
 
 			const warningGuide = restoredWarnings.length
@@ -136,20 +143,6 @@ export class RestoreManager {
 		} finally {
 			this.isRestoring = false;
 		}
-	}
-
-	private createLocalSafetySnapshot(configPath: string, timestamp: string): void {
-		const localDir = this.backupManager.getLocalSnapshotDirPublic();
-		if (!localDir) return;
-
-		if (this.settings.backupFormat === "archive") {
-			const snapshotPath = path.join(localDir, `pre-restore-${timestamp}.zip`);
-			writeArchiveFromDirectory(configPath, snapshotPath, null, isSafeConfigRelativePath);
-			return;
-		}
-
-		const snapshotDir = path.join(localDir, "pre-restore-" + timestamp);
-		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
 	}
 
 	private async getVersionEntries(includeLatest: boolean): Promise<VersionEntry[]> {
@@ -195,30 +188,20 @@ export class RestoreManager {
 	private formatVersionLabel(prefix: string, meta: BackupMeta | null, latest: boolean): string {
 		const parts = [prefix];
 		if (meta?.deviceName) parts.push(`[${meta.deviceName}]`);
-		if (meta?.comment) parts.push(`- ${meta.comment}`);
+		if (meta?.comment) parts.push(`- ${this.truncateLabel(meta.comment)}`);
 		if (latest) parts.push("(latest)");
 		else if (meta?.changelog?.length) parts.push(`(${meta.changelog.length} changes)`);
 		return parts.join(" ");
 	}
 
-	private copyDirRecursive(
-		src: string,
-		dest: string,
-		shouldCopyFile?: (relativePath: string) => boolean,
-		prefix = "",
-	): void {
-		fs.mkdirSync(dest, { recursive: true });
-		const entries = fs.readdirSync(src, { withFileTypes: true });
-		for (const entry of entries) {
-			const srcPath = path.join(src, entry.name);
-			const destPath = path.join(dest, entry.name);
-			const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-			if (entry.isDirectory()) {
-				this.copyDirRecursive(srcPath, destPath, shouldCopyFile, relativePath);
-			} else if (!shouldCopyFile || shouldCopyFile(relativePath)) {
-				fs.copyFileSync(srcPath, destPath);
-			}
-		}
+	private formatRestoreSourceLabel(backupPath: string, meta: BackupMeta | null): string {
+		if (meta?.comment) return this.truncateLabel(meta.comment);
+		if (meta?.lastBackupTimeStr) return meta.lastBackupTimeStr;
+		return path.basename(backupPath);
+	}
+
+	private truncateLabel(value: string, maxLength = 80): string {
+		return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}...`;
 	}
 }
 
@@ -559,6 +542,7 @@ class VersionCompareModal extends Modal {
 
 		this.renderChangeGroup("Added", changes.added);
 		this.renderChangeGroup("Modified", changes.modified);
+		this.renderJsonDiffs(from.path, to.path, changes.modified);
 		this.renderChangeGroup("Deleted", changes.deleted);
 	}
 
@@ -574,27 +558,48 @@ class VersionCompareModal extends Modal {
 			details.createEl("div", { text: `...and ${files.length - 200} more` });
 		}
 	}
+
+	private renderJsonDiffs(fromPath: string, toPath: string, files: string[]): void {
+		if (!this.resultEl) return;
+		const jsonFiles = files.filter((file) => file.toLowerCase().endsWith(".json"));
+		if (jsonFiles.length === 0) return;
+
+		const details = this.resultEl.createEl("details");
+		details.open = false;
+		details.createEl("summary", { text: `JSON structure changes (${jsonFiles.length})` });
+		for (const file of jsonFiles.slice(0, 80)) {
+			const fromText = readBackupFileText(fromPath, file);
+			const toText = readBackupFileText(toPath, file);
+			if (fromText === null || toText === null) {
+				details.createEl("div", { text: `${file}: modified JSON file, content unavailable` });
+				continue;
+			}
+			const diff = compareJsonStructure(fromText, toText);
+			details.createEl("div", { text: `${file}: ${formatJsonDiff(diff)}` });
+		}
+		if (jsonFiles.length > 80) {
+			details.createEl("div", { text: `...and ${jsonFiles.length - 80} more JSON files` });
+		}
+	}
 }
 
-function compareFileHashes(
-	fromHashes: Record<string, string>,
-	toHashes: Record<string, string>,
-): { added: string[]; modified: string[]; deleted: string[] } {
-	const added: string[] = [];
-	const modified: string[] = [];
-	const deleted: string[] = [];
-
-	for (const [file, hash] of Object.entries(toHashes)) {
-		if (!fromHashes[file]) added.push(file);
-		else if (fromHashes[file] !== hash) modified.push(file);
+function readBackupFileText(backupPath: string, relativePath: string): string | null {
+	try {
+		if (isArchiveBackupPath(backupPath)) return readArchiveText(backupPath, relativePath);
+		const filePath = path.join(backupPath, relativePath);
+		if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return null;
+		return fs.readFileSync(filePath, "utf8");
+	} catch {
+		return null;
 	}
-	for (const file of Object.keys(fromHashes)) {
-		if (!toHashes[file]) deleted.push(file);
-	}
+}
 
-	return {
-		added: added.sort(),
-		modified: modified.sort(),
-		deleted: deleted.sort(),
-	};
+function formatJsonDiff(diff: JsonStructureDiff): string {
+	if (diff.parseError) return "modified JSON file, parse failed";
+	const parts = [
+		diff.addedKeys.length ? `+ keys ${diff.addedKeys.slice(0, 12).join(", ")}` : "",
+		diff.removedKeys.length ? `- keys ${diff.removedKeys.slice(0, 12).join(", ")}` : "",
+		diff.changedKeys.length ? `~ keys ${diff.changedKeys.slice(0, 12).join(", ")}` : "",
+	].filter(Boolean);
+	return parts.length ? parts.join("; ") : "JSON changed without top-level key changes";
 }

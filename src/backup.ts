@@ -81,8 +81,9 @@ export class BackupManager {
 
 			this.reportProgress(options, { stage: "Collecting files" });
 			const backupFiles = collectBackupFiles(configPath, tempLatestDir, this.settings);
+			const totalBytes = this.getFilesSize(backupFiles);
 
-			await this.copyBackupFiles(backupFiles, options, "Copying backup files");
+			await this.copyBackupFiles(backupFiles, options, "Copying backup files", totalBytes);
 
 			if (this.settings.syncOwnPluginSettings) {
 				backupFiles.push(this.writeOwnPluginSettingsSnapshot(tempLatestDir));
@@ -111,8 +112,19 @@ export class BackupManager {
 
 			fs.mkdirSync(syncDir, { recursive: true });
 			if (this.settings.backupFormat === "archive") {
-				this.reportProgress(options, { stage: "Compressing latest backup" });
+				this.reportProgress(options, {
+					stage: "Compressing zip, Obsidian may pause briefly",
+					processedBytes: totalBytes,
+					totalBytes,
+				});
 				writeArchiveFromDirectory(tempLatestDir, tempLatestArchive, meta);
+				const outputBytes = fs.existsSync(tempLatestArchive) ? fs.statSync(tempLatestArchive).size : undefined;
+				this.reportProgress(options, {
+					stage: "Compressed latest backup",
+					processedBytes: totalBytes,
+					totalBytes,
+					outputBytes,
+				});
 				this.reportProgress(options, { stage: "Replacing latest backup" });
 				this.replaceLatestArchive(syncDir, latestArchive, tempLatestArchive, latestDir);
 				if (fs.existsSync(tempLatestDir)) {
@@ -152,22 +164,29 @@ export class BackupManager {
 		backupFiles: BackupFile[],
 		options: BackupRunOptions,
 		stage: string,
+		totalBytes: number = this.getFilesSize(backupFiles),
 	): Promise<void> {
 		const total = backupFiles.length;
+		let processedBytes = 0;
 		for (let index = 0; index < backupFiles.length; index++) {
 			const file = backupFiles[index];
+			const fileBytes = fs.existsSync(file.source) ? fs.statSync(file.source).size : 0;
 			this.reportProgress(options, {
 				stage,
 				current: index + 1,
 				total,
+				processedBytes,
+				totalBytes,
 				detail: file.relativePath,
 			});
 			fs.mkdirSync(path.dirname(file.dest), { recursive: true });
 			fs.copyFileSync(file.source, file.dest);
+			processedBytes += fileBytes;
 			if (index % UI_YIELD_EVERY_FILES === UI_YIELD_EVERY_FILES - 1) {
 				await this.yieldToUi();
 			}
 		}
+		this.reportProgress(options, { stage, current: total, total, processedBytes, totalBytes });
 	}
 
 	async createLocalSnapshotOnly(options: BackupRunOptions = {}): Promise<string> {
@@ -187,6 +206,21 @@ export class BackupManager {
 		return this.settings.backupFormat === "archive"
 			? path.join(localDir, `${timestamp}.zip`)
 			: path.join(localDir, timestamp);
+	}
+
+	createPreRestoreSnapshot(sourceLabel: string, options: BackupRunOptions = {}): string | null {
+		const localDir = this.getLocalSnapshotDir();
+		if (!localDir) return null;
+
+		const snapshotName = `pre-restore-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+		const comment = `Before restore from ${sourceLabel}`;
+		const configPath = this.getConfigPath();
+		const meta = this.buildMeta(this.collectSafeConfigFiles(configPath, ""), comment);
+		meta.changelog = ["+ Pre-restore safety snapshot"];
+		this.createLocalSnapshotSync(configPath, snapshotName, meta, options);
+		return this.settings.backupFormat === "archive"
+			? path.join(localDir, `${snapshotName}.zip`)
+			: path.join(localDir, snapshotName);
 	}
 
 	private collectSafeConfigFiles(sourceRoot: string, destRoot: string): BackupFile[] {
@@ -214,6 +248,16 @@ export class BackupManager {
 
 	private reportProgress(options: BackupRunOptions, progress: BackupOperationProgress): void {
 		if (options.onProgress) options.onProgress(progress);
+	}
+
+	private getFilesSize(files: BackupFile[]): number {
+		return files.reduce((total, file) => {
+			try {
+				return total + fs.statSync(file.source).size;
+			} catch {
+				return total;
+			}
+		}, 0);
 	}
 
 	private async yieldToUi(): Promise<void> {
@@ -326,6 +370,45 @@ export class BackupManager {
 		if (meta) {
 			fs.writeFileSync(path.join(snapshotDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
 		}
+	}
+
+	private createLocalSnapshotSync(
+		configPath: string,
+		snapshotName: string,
+		meta: BackupMeta,
+		options: BackupRunOptions = {},
+	): void {
+		const localDir = this.getLocalSnapshotDir();
+		if (!localDir) return;
+		const sourceFiles = this.collectSafeConfigFiles(configPath, "");
+		const totalBytes = this.getFilesSize(sourceFiles);
+
+		if (this.settings.backupFormat === "archive") {
+			const archivePath = path.join(localDir, `${snapshotName}.zip`);
+			this.reportProgress(options, {
+				stage: "Compressing pre-restore snapshot",
+				processedBytes: totalBytes,
+				totalBytes,
+			});
+			writeArchiveFromDirectory(configPath, archivePath, meta, isSafeConfigRelativePath);
+			const outputBytes = fs.existsSync(archivePath) ? fs.statSync(archivePath).size : undefined;
+			this.reportProgress(options, {
+				stage: "Pre-restore snapshot created",
+				processedBytes: totalBytes,
+				totalBytes,
+				outputBytes,
+			});
+			return;
+		}
+
+		const snapshotDir = path.join(localDir, snapshotName);
+		this.copyDirRecursive(configPath, snapshotDir, isSafeConfigRelativePath);
+		fs.writeFileSync(path.join(snapshotDir, META_FILE_NAME), JSON.stringify(meta, null, 2));
+		this.reportProgress(options, {
+			stage: "Pre-restore snapshot created",
+			processedBytes: totalBytes,
+			totalBytes,
+		});
 	}
 
 	private copyDirRecursive(
@@ -488,6 +571,19 @@ export class BackupManager {
 		return this.getLocalSnapshotDir();
 	}
 
+	getLatestPreRestoreSnapshotPath(): string | null {
+		const localDir = this.getLocalSnapshotDir();
+		if (!fs.existsSync(localDir)) return null;
+		const entries = fs.readdirSync(localDir)
+			.filter((entry: string) =>
+				entry.startsWith("pre-restore-")
+				&& (entry.endsWith(".zip") || fs.statSync(path.join(localDir, entry)).isDirectory())
+			)
+			.sort()
+			.reverse();
+		return entries.length ? path.join(localDir, entries[0]) : null;
+	}
+
 	getHistoryList(): Array<{ timestamp: string; displayName: string; meta: BackupMeta | null }> {
 		const historyDir = this.getSyncHistoryDir();
 		if (!fs.existsSync(historyDir)) return [];
@@ -540,9 +636,11 @@ export class BackupManager {
 					}
 				}
 			} catch {}
+			const isPreRestore = timestamp.startsWith("pre-restore-");
+			const rawTimestamp = isPreRestore ? timestamp.slice("pre-restore-".length) : timestamp;
 			return {
 				timestamp: entry,
-				displayName: "Local: " + this.formatTimestamp(timestamp),
+				displayName: `${isPreRestore ? "Pre-restore" : "Local"}: ${this.formatTimestamp(rawTimestamp)}`,
 				meta,
 			};
 		});

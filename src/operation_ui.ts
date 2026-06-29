@@ -99,7 +99,25 @@ export class BackupProgressModal extends Modal {
 		const count = progress.total
 			? ` (${progress.current || 0}/${progress.total})`
 			: "";
+		const bytes = progress.totalBytes
+			? ` - ${formatBytes(progress.processedBytes || 0)} / ${formatBytes(progress.totalBytes)}`
+			: "";
+		const output = progress.outputBytes
+			? ` -> ${formatBytes(progress.outputBytes)} zip`
+			: "";
 		if (this.stageEl) this.stageEl.setText(`${progress.stage}${count}`);
-		if (this.detailEl) this.detailEl.setText(progress.detail || "");
+		if (this.detailEl) this.detailEl.setText(`${progress.detail || ""}${bytes}${output}`.trim());
 	}
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	const units = ["KB", "MB", "GB"];
+	let value = bytes / 1024;
+	let index = 0;
+	while (value >= 1024 && index < units.length - 1) {
+		value /= 1024;
+		index++;
+	}
+	return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[index]}`;
 }

@@ -71,9 +71,12 @@ GitHub also provides automatic source code archives on each release. They are so
 3. Configure the backup path, usually \`meta\`.
 4. Keep the default archive zip format unless you need the legacy loose-file directory layout.
 5. Create the first backup manually.
-6. Use "Create Local Safety Snapshot" when you only want a local rollback point and do not want to update the synced backup.
-7. Restore dialogs show changed or missing files by default and mark JSON settings that contain absolute local paths.
-8. Community plugin restore entries are grouped by plugin name and id, with plugin-level selection.
+6. Add comments to manual backups so future restore decisions are easier.
+7. Use "Create Local Safety Snapshot" when you only want a local rollback point and do not want to update the synced backup.
+8. Restore dialogs show changed or missing files by default and mark JSON settings that contain absolute local paths.
+9. Use "Restore Last Pre-Restore Snapshot" if a restore needs to be rolled back.
+10. Use "Compare backup versions" to inspect file-hash changes and JSON key summaries.
+11. Community plugin restore entries are grouped by plugin name and id, with plugin-level selection.
 
 ## Multi-device retention note
 
